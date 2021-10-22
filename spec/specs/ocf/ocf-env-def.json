@@ -1,0 +1,42 @@
+[
+    {
+      "href": "/oic/res",
+      "rt": [ "oic.wk.res" ],
+      "if": [ "oic.if.a", "oic.if.baseline" ],
+      "rel": [ "self" ]
+    },
+    {
+      "href": "/introspection",
+      "rt": [ "oic.wk.introspection" ],
+      "if": [ "oic.if.r", "oic.if.baseline" ]
+    },
+    {
+      "href": "/co2",
+      "rt": [ "oic.r.sensor.carbondioxide" ],
+      "if": [
+        [ "oic.if.s", "oic.if.baseline" ]
+      ]
+    },
+    {
+      "href": "/humid",
+      "rt": [ "oic.r.humidity" ],
+      "if": [
+        [ "oic.if.s", "oic.if.baseline" ]
+      ]
+    },
+    {
+      "href": "/press",
+      "rt": [ "oic.r.sensor.atmosphericpressure" ],
+      "if": [
+        [ "oic.if.s", "oic.if.baseline" ]
+      ]
+    },
+    {
+      "href": "/temp",
+      "rt": [ "oic.r.temperature" ],
+      "if": [
+        [ "oic.if.s", "oic.if.baseline" ]
+      ]
+    }
+  ]
+  

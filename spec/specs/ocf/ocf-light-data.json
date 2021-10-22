@@ -1,0 +1,5 @@
+[
+    {"id":"state", "rt": ["oic.r.switch.binary"], "value": true},
+    {"id":"brightness", "rt": ["oic.r.light.brightness"],"brightness": 50},
+    {"id": "colour", "rt": ["oic.r.colour.rgb"],"rgbValue": [255, 255, 255]}
+]

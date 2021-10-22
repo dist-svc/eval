@@ -1,0 +1,34 @@
+[
+    {
+        "href": "/oic/res",
+        "rt": [ "oic.wk.res" ],
+        "if": [ "oic.if.a", "oic.if.baseline" ],
+        "rel": [ "self" ]
+    },
+    {
+        "href": "/introspection",
+        "rt": [ "oic.wk.introspection" ],
+        "if": [ "oic.if.r", "oic.if.baseline" ]
+    },
+    {
+        "href": "/switch",
+        "rt": [ "oic.r.switch.binary" ],
+        "if": [
+            [ "oic.if.baseline", "oic.if.a" ]
+        ]
+    },
+    {
+        "href": "/colour",
+        "rt": [ "oic.r.colour.rgb" ],
+        "if": [
+          [ "oic.if.baseline", "oic.if.a" ]
+        ]
+    },
+    {
+        "href": "/dimming",
+        "rt": [ "oic.r.light.dimming" ],
+        "if": [
+            [ "oic.if.baseline", "oic.if.a" ]
+        ]
+    }
+]

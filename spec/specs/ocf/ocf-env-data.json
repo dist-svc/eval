@@ -1,0 +1,6 @@
+[
+    {"id":"temp", "rt": ["oic.r.temperature"], "temperature": 27.3, "units": "C"},
+    {"id":"humid", "rt": ["oic.r.humid"], "humidity": 49.5},
+    {"id": "press", "rt": ["oic.r.sensor.atmosphericpressure"], "atmosphericPressure": 1000.4},
+    {"id": "co2", "rt": ["oic.r.sensor.carbondioxide"], "co2_ppm": 233}
+]

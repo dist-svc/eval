@@ -1,0 +1,3 @@
+</state>;if="oic.if.a";rt="oic.r.switch.binary",
+</bright>;if="oic.if.a";rt="oic.r.light.dimming",
+</colour>;if="oic.if.a";rt="oic.r.colour.rgb",

@@ -1,0 +1,4 @@
+</temp>;if="oic.if.s";rt="oic.r.temperature",
+</humid>;if="oic.if.s";rt="oic.r.humidity",
+</press>;if="oic.if.s";rt="oic.r.sensor.atmosphericpressure",
+</co2>;if="oic.if.s";rt="oic.r.sensor.carbondioxide",
