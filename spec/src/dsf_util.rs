@@ -5,7 +5,7 @@ use dsf_core::prelude::{Body, DataOptions, Page};
 use dsf_core::service::{Service, ServiceBuilder, Publisher};
 
 use dsf_iot::prelude::*;
-use dsf_iot::endpoint::Value;
+use dsf_iot::endpoint::{Value, DataRef};
 
 #[async_std::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -21,7 +21,7 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-const SERVICES: &[(&str, &[Descriptor], &[Data], bool)] = &[
+const SERVICES: &[(&str, &[Descriptor], &[DataRef], bool)] = &[
     ("env", ENV_DESCRIPTORS, ENV_DATA, false),
     ("env", ENV_DESCRIPTORS, ENV_DATA, true),
     ("light", LIGHT_DESCRIPTORS, LIGHT_DATA, false),
@@ -35,11 +35,11 @@ const ENV_DESCRIPTORS: &[Descriptor] = &[
     Descriptor{kind: Kind::Co2, flags: Flags::R, meta: vec![]},
 ];
 
-const ENV_DATA: &[Data] = &[
-    Data{ value: Value::Float32(27.3), meta: vec![] },
-    Data{ value: Value::Float32(49.5), meta: vec![] },
-    Data{ value: Value::Float32(100.4), meta: vec![] },
-    Data{ value: Value::Int32(233), meta: vec![] },
+const ENV_DATA: &[DataRef] = &[
+    Data{ value: Value::Float32(27.3), meta: &[] },
+    Data{ value: Value::Float32(49.5), meta: &[] },
+    Data{ value: Value::Float32(100.4), meta: &[] },
+    Data{ value: Value::Int32(233), meta: &[] },
 ];
 
 const LIGHT_DESCRIPTORS: &[Descriptor] = &[
@@ -48,12 +48,14 @@ const LIGHT_DESCRIPTORS: &[Descriptor] = &[
     Descriptor{kind: Kind::Colour, flags: Flags::R, meta: vec![]},
 ];
 
-const LIGHT_DATA: &[Data] = &[
-
+const LIGHT_DATA: &[DataRef] = &[
+    Data{ value: Value::Bool(true), meta: &[] },
+    Data{ value: Value::Int32(50), meta: &[] },
+    Data{ value: Value::Bytes(&[255, 255, 255]), meta: &[] },
 ];
 
 
-fn build_service(desc: &[Descriptor], data: &[Data], encrypted: bool) -> Result<(usize, usize), anyhow::Error> {
+fn build_service(desc: &[Descriptor], data: &[DataRef], encrypted: bool) -> Result<(usize, usize), anyhow::Error> {
 
     let mut ep_buff = [0u8; 1024];
     let n = IotService::encode_body(desc, &mut ep_buff).unwrap();
