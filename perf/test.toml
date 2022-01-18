@@ -1,0 +1,46 @@
+
+[base]
+runtime = "10s"
+tls_ca = ".certs/ca.crt"
+tls_cert = ".certs/client.crt"
+tls_key = ".certs/client.key"
+
+[matrix]
+#clients = [ 10, 25, 50, 75, 100, 125, 150, 175, 200 ]
+#clients = [ 10, 50, 100, 150, 200 ]
+clients = [ 10 ]
+#frequency = [ 1, 2, 10 ]
+frequency = [ 10 ]
+message_len = 32
+
+[[drivers]]
+mode = "mqtt"
+container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-mqtt"
+port = 1883
+
+[[drivers]]
+mode = "mqtts"
+container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-mqtt"
+port = 8883
+
+[[drivers]]
+mode = "coap"
+container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-coap"
+port = 5683
+
+[[drivers]]
+mode = "coaps"
+container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-coap"
+command = "coap-server --endpoints 1000 --port 5684 --dtls"
+port = 5684
+
+[[drivers]]
+mode = "dsf"
+#container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-dsf"
+container = "ghcr.io/dist-svc/dsf"
+port = 10100
+env = [
+    "DSF_DB_FILE=/run/dsfd.db",
+    "DSF_SOCK=/var/dsfd.sock",
+#    "ASYNC_STD_THREAD_COUNT=1",
+]
