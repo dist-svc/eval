@@ -20,7 +20,7 @@ pub struct Args {
     /// Output directory for results
     pub output_dir: String,
 
-    #[structopt(long = "log-level", default_value = "info")]
+    #[structopt(long, default_value = "trace")]
     /// Configure app logging levels (warn, info, debug, trace)
     pub log_level: LevelFilter,
 }

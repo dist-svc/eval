@@ -5,6 +5,7 @@ use std::{marker::PhantomData, time::{Duration}};
 use std::marker::Unpin;
 
 use structopt::StructOpt;
+use strum::VariantNames;
 use strum_macros::{EnumVariantNames, Display, EnumString};
 
 use futures::future::{self, FutureExt};
@@ -42,11 +43,11 @@ pub struct Options {
     targets: Vec<String>,
     
     /// Test mode filters
-    #[structopt(long)]
+    #[structopt(long, possible_values=DriverMode::VARIANTS)]
     mode_filters: Vec<DriverMode>,
 
     /// Set docker mode
-    #[structopt(long, default_value = "http", env)]
+    #[structopt(long, default_value = "http", possible_values=DockerMode::VARIANTS, env)]
     docker_mode: DockerMode,
 
     /// Set number of test retries
@@ -424,8 +425,12 @@ where
         // Request stats from runtime
         let options = Some(StatsOptions{
             stream: true,
+            ..Default::default()
         });
-        let mut stats_rx = remote[i].stats(&format!("test-{}", i), options).fuse();
+        let container_name = format!("test-{}", i);
+        info!("Starting stats collector for: {}", container_name);
+
+        let mut stats_rx = remote[i].stats(&container_name, options).fuse();
         let mut exit = pub_done_tx.subscribe();
 
         // Setup task to collect em

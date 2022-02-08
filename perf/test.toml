@@ -36,8 +36,8 @@ port = 5684
 
 [[drivers]]
 mode = "dsf"
-#container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-dsf"
-container = "ghcr.io/dist-svc/dsf"
+container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-dsf"
+#container = "ghcr.io/dist-svc/dsf"
 port = 10100
 env = [
     "DSF_DB_FILE=/run/dsfd.db",

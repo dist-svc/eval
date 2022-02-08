@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::collections::HashMap;
@@ -5,6 +6,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use std::str::FromStr;
 
+use dsf_core::wire::Container;
 use futures::{Stream};
 use tokio::sync::mpsc::{channel, Sender, Receiver};
 use tokio::task::{JoinHandle};
@@ -53,10 +55,10 @@ pub struct DsfClient {
 
     server: SocketAddr,
 
-    svc: Service,
+    svc_id: Id,
 
     msg_in_rx: Receiver<Vec<u8>>,
-    cmd_tx: Sender<(u16, SocketAddr, NetRequest, Sender<NetResponse>)>,
+    req_tx: Sender<(u16, SocketAddr, Op, Sender<NetResponse>)>,
 
     topics: Vec<Id>,
 
@@ -64,19 +66,35 @@ pub struct DsfClient {
     exit_tx: Sender<()>,
 }
 
+struct Req {
+    req_id: u16, 
+    addr: SocketAddr,
+    op: Op, 
+    resp: Sender<NetResponse>,
+}
+
+enum Op {
+    Req(NetRequest),
+    Register,
+    Publish(Vec<u8>),
+}
+
 impl DsfClient {
    pub async fn new(index: usize, _name: String, server: SocketAddr) -> Result<Self, Error> {
         // Create DSF service
-        let svc = ServiceBuilder::default().build().unwrap();
+        let mut svc = ServiceBuilder::default().build().unwrap();
+
+        // Generate service page
+        let primary = svc.publish_primary_buff(Default::default()).unwrap();
 
         // Bind UDP socket
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
         let (exit_tx, mut exit_rx) = channel(1);
         let (msg_in_tx, msg_in_rx) = channel(1000);
-        let (cmd_tx, mut cmd_rx) = channel::<(u16, SocketAddr, NetRequest, Sender<NetResponse>)>(1000);
+        let (req_tx, mut req_rx) = channel::<(u16, SocketAddr, Op, Sender<NetResponse>)>(1000);
 
-        let (id, svc_keys) = (svc.id(), svc.keys());
+        let (svc_id, svc_keys) = (svc.id(), svc.keys());
 
         // Start request task
         let udp_handle = tokio::spawn(async move {
@@ -87,9 +105,30 @@ impl DsfClient {
 
             loop {
                 tokio::select!(
-                    // Handle commands
-                    Some((req_id, address, req, resp_ch)) = cmd_rx.recv() => {
-                        let mut req = req;
+                    // Handle outgoing requests
+                    Some((req_id, address, op, resp_ch)) = req_rx.recv() => {
+                        
+                        let mut req = match op {
+                            Op::Req(mut req) => {
+                                req.common.public_key = svc_keys.pub_key.clone();
+                                req
+                            },
+                            Op::Register => {
+                                let (_n, c) = svc.publish_primary_buff(Default::default()).unwrap();
+                                let kind = NetRequestKind::Register(svc.id(), vec![Page::try_from(c).unwrap()]);
+                                let mut req = NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED | Flags::PUB_KEY_REQUEST);
+                                req.common.public_key = svc_keys.pub_key.clone();
+                                req
+                            },
+                            Op::Publish(data) => {
+                                let opts = DataOptions{body: Some(data.as_ref()), ..Default::default()};
+                                let (_n, c) = svc.publish_data_buff(opts).unwrap();
+                                let kind = NetRequestKind::PushData(svc.id(), vec![Page::try_from(c).unwrap()]);
+                                NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED)
+                            },
+                        };
+
+                        debug!("Sending request: {:?}", req);
 
                         // Fetch keying information
                         let enc_key = match peer_id.as_ref().map(|p| keys.get(p) ).flatten() {
@@ -101,15 +140,14 @@ impl DsfClient {
                             },
                             None => {
                                 *req.flags() |= Flags::PUB_KEY_REQUEST;
-                                req.set_public_key(svc_keys.pub_key.clone());
+                                req.set_public_key(svc.public_key());
                                 &svc_keys
                             },
                         };
                         
                         // Encode message
-                        let mut buff = [0u8; 1024];
-                        let n = match NetMessage::request(req).encode(enc_key, &mut buff[..]) {
-                            Ok(n) => n,
+                        let c = match svc.encode_request_buff(&req, enc_key) {
+                            Ok(c) => c,
                             Err(e) => {
                                 error!("Error encoding message: {:?}", e);
                                 return Err(Error::Unknown)
@@ -119,7 +157,7 @@ impl DsfClient {
                         // Add RX handle
                         rx_handles.insert(req_id, resp_ch);
 
-                        if let Err(e) = sock.send_to(&buff[..n], &address).await {
+                        if let Err(e) = sock.send_to(c.raw(), &address).await {
                             error!("UDP send2 error: {:?}", e);
                             return Err(Error::Unknown);
                         }
@@ -129,13 +167,15 @@ impl DsfClient {
                         trace!("Recieve UDP from {}", address);
 
                         // Parse message (no key / secret stores)
-                        let (base, _n) = match Base::parse(&buff[..n], &keys) {
+                        let base = match Container::parse(&buff[..n], &keys) {
                             Ok(v) => (v),
                             Err(e) => {
                                 error!("DSF parsing error: {:?}", e);
                                 continue;
                             }
                         };
+
+                        debug!("Received: {:?}", base);
 
                         // Store peer ID for later
                         if peer_id.is_none() {
@@ -171,7 +211,7 @@ impl DsfClient {
                             (NetMessage::Request(req), _) => {
 
                                 // Respond with OK
-                                let mut resp = net::Response::new(id.clone(), req_id, net::ResponseKind::Status(net::Status::Ok), Flags::empty());
+                                let mut resp = net::Response::new(svc.id(), req_id, net::ResponseKind::Status(net::Status::Ok), Flags::empty());
 
                                 // Fetch keys and enable symmetric mode if available
                                 let enc_key = match keys.get(&req.from) {
@@ -182,17 +222,14 @@ impl DsfClient {
                                         k
                                     },
                                     None => {
-                                        resp.set_public_key(svc_keys.pub_key.clone());
+                                        resp.set_public_key(svc.public_key());
                                         &svc_keys
                                     },
                                 };
-                                
-                                
-                                let mut buff = [0u8; 1024];
-                                let n = net::Message::response(resp).encode(&enc_key, &mut buff).unwrap();
-                                let encoded = (&buff[..n]).to_vec();
+                                                                
+                                let c = svc.encode_response_buff(&resp, &enc_key).unwrap();
 
-                                if let Err(e) = sock.send_to(encoded.as_slice(), address.clone()).await {
+                                if let Err(e) = sock.send_to(c.raw(), address.clone()).await {
                                     error!("UDP send error: {:?}", e);
                                     return Err(Error::Unknown);
                                 }
@@ -252,9 +289,9 @@ impl DsfClient {
         let s = Self {
             index,
             server,
-            req_id: 0,
-            svc,
-            cmd_tx,
+            req_id: rand::random(),
+            svc_id,
+            req_tx,
             msg_in_rx,
             topics: vec![],
             udp_handle,
@@ -266,11 +303,12 @@ impl DsfClient {
         Ok(s)
    }
 
+
    pub async fn request(&mut self, kind: NetRequestKind) -> Result<NetResponseKind, Error> {
-        self.req_id = rand::random();
+        self.req_id = self.req_id.wrapping_add(1);
 
         // Build and encode message
-        let req = NetRequest::new(self.svc.id(), self.req_id, kind, Flags::CONSTRAINED);
+        let req = NetRequest::new(self.svc_id.clone(), self.req_id, kind, Flags::CONSTRAINED);
 
         trace!("Request: {:?}", req); 
 
@@ -280,7 +318,9 @@ impl DsfClient {
         // Transmit request (with retries)
         for _i in 0..DSF_RETRIES {
             // Send request data
-            let _n = self.cmd_tx.send((self.req_id, self.server, req.clone(), tx.clone())).await.unwrap();
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Req(req.clone()), tx.clone())).await {
+                continue;
+            }
 
             // Await response
             match time::timeout(Duration::from_secs(5), rx.recv()).await {
@@ -309,14 +349,14 @@ impl Client for DsfClient {
     }
 
     fn topic(&self) -> String {
-        self.svc.id().to_string()
+        self.svc_id.to_string()
      }
 
     // Subscribe to a topic
     async fn subscribe(&mut self, topic: &str) -> Result<(), Error> {
         let id = Id::from_str(topic).unwrap();
 
-        debug!("Issuing subscribe request for {}", self.svc.id().to_string());
+        debug!("Issuing subscribe request for {}", self.svc_id.to_string());
 
         // First, locate the service (DHT lookup)
         let resp = self.request(NetRequestKind::Locate(id.clone())).await;
@@ -355,58 +395,50 @@ impl Client for DsfClient {
 
     // Register a topic
     async fn register(&mut self, _topic: &str) -> Result<(), Error> {
-        let mut buff = vec![0u8; 1024];
-        let (n, mut p) = self.svc.publish_primary(&mut buff[..]).unwrap();
-        p.raw = Some((&buff[..n]).to_vec());
-
-        debug!("Issuing register request for {}", self.svc.id().to_string());
+        debug!("Issuing register request for {}", self.svc_id.to_string());
 
         // Request registration
-        match self.request(NetRequestKind::Register(self.svc.id(), vec![p])).await {
-            Ok(NetResponseKind::Status(net::Status::Ok)) => {
-                debug!("Registered service: {}", self.svc.id());
-                Ok(())
-            },
-            Ok(v) => {
-                error!("register {}, unexpected response: {:?}", self.svc.id(), v);
-                Err(Error::Unknown)
-            },
-            Err(e) => {
-                error!("register {}, client error: {:?}", self.svc.id(), e);
-                Err(Error::Unknown)
+        self.req_id = self.req_id.wrapping_add(1);
+        let (tx, mut rx) = channel(1);
+
+        // Transmit request (with retries)
+        for _i in 0..DSF_RETRIES {
+            // Send request data
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Register, tx.clone())).await {
+                continue;
+            }
+
+            // Await response
+            match time::timeout(Duration::from_secs(5), rx.recv()).await {
+                Ok(Some(v)) => return Ok(()),
+                _ => continue,
             }
         }
+
+        Err(Error::Timeout)
     }
 
     // Publish data to a topic
     async fn publish(&mut self, _topic: &str, data: &[u8]) -> Result<(), Error> {
-        // Build data object
-        let d = DataOptions{
-            body: Body::Cleartext(data.to_vec()),
-            ..Default::default()
-        };
-
-        let mut buff = vec![0u8; 1024];
-        let (n, mut p) = self.svc.publish_data(d, &mut buff).unwrap();
-        p.raw = Some((&buff[..n]).to_vec());
-
-        debug!("Issuing publish request for {}", self.svc.id().to_string());
-
         // Request publishing
-        match self.request(NetRequestKind::PushData(self.svc.id(), vec![p])).await {
-            Ok(NetResponseKind::Status(net::Status::Ok)) => {
-                debug!("publish OK");
-                Ok(())
-            },
-            Ok(v) => {
-                error!("publish, unexpected response: {:?}", v);
-                Err(Error::Unknown)
-            },
-            Err(e) => {
-                error!("publish, client error: {:?}", e);
-                Err(Error::Unknown)
+        self.req_id = self.req_id.wrapping_add(1);
+        let (tx, mut rx) = channel(1);
+
+        // Transmit request (with retries)
+        for _i in 0..DSF_RETRIES {
+            // Send request data
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Publish(data.to_vec()), tx.clone())).await {
+                continue;
+            }
+
+            // Await response
+            match time::timeout(Duration::from_secs(5), rx.recv()).await {
+                Ok(Some(v)) => return Ok(()),
+                _ => continue,
             }
         }
+
+        Err(Error::Timeout)
     }
 
     async fn close(mut self) -> Result<(), Error> {

@@ -1,11 +1,12 @@
 
 use core::convert::TryFrom;
 
-use dsf_core::prelude::{Body, DataOptions, Page};
+use dsf_core::prelude::{Body, DataOptions, Page, Encode};
 use dsf_core::service::{Service, ServiceBuilder, Publisher};
 
 use dsf_iot::prelude::*;
 use dsf_iot::endpoint::{Value, DataRef};
+use dsf_iot::service::IotInfo;
 
 #[async_std::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -58,9 +59,11 @@ const LIGHT_DATA: &[DataRef] = &[
 fn build_service(desc: &[Descriptor], data: &[DataRef], encrypted: bool) -> Result<(usize, usize), anyhow::Error> {
 
     let mut ep_buff = [0u8; 1024];
-    let n = IotService::encode_body(desc, &mut ep_buff).unwrap();
+    let svc_info = IotInfo::new(desc);
+    let n = svc_info.encode(&mut ep_buff).unwrap();
 
     // TODO: set kind to IotService
+    
     let mut sb = ServiceBuilder::default()
         .body(Body::Cleartext((&ep_buff[..n]).to_vec()));
 
@@ -80,16 +83,17 @@ fn build_service(desc: &[Descriptor], data: &[DataRef], encrypted: bool) -> Resu
 
     // Build data
     let mut data_buff = [0u8; 1024];
-    let n = IotData::encode_data(data, &mut data_buff)?;
+    let svc_data = IotData::new(data);
+    let n = svc_data.encode(&mut data_buff)?;
 
     let data_opts = DataOptions{
-        body: &data_buff[..n],
+        body: Some(&data_buff[..n]),
         ..Default::default()
     };
     let (data_len, data) = s.publish_data(data_opts, buff)?;
 
-    let p = Page::try_from(data)?;
-    log::debug!("Block: {:?}", p);
+    let b = Page::try_from(data)?;
+    log::debug!("Block: {:?}", b);
 
     Ok((page_len, data_len))
 }

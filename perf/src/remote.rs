@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use log::{trace, debug, info};
+use log::{trace, debug, info, warn};
 
 use clap::arg_enum;
 
@@ -19,19 +19,21 @@ use bollard::service::{HostConfig, PortBinding};
 use bollard::models::{ContainerConfig, Mount, MountTypeEnum};
 
 use rolling_stats::Stats;
+use strum_macros::{EnumVariantNames, EnumString, Display};
 
 use crate::error::Error;
 use super::SocketKind;
 
 
-arg_enum!{
-    #[derive(PartialEq, Clone, Debug)]
-    pub enum DockerMode {
-        Local,
-        Http,
-        None,
-    }
+
+#[derive(PartialEq, Clone, Debug, EnumString, Display, EnumVariantNames)]
+#[strum(serialize_all = "kebab_case")]
+pub enum DockerMode {
+    Local,
+    Http,
+    None,
 }
+
 
 pub struct ContainerStats {
     previous_cpu: Option<f64>,
@@ -58,34 +60,36 @@ impl ContainerStats {
 
         trace!("stats: {:?}", stats);
 
-        let mem = stats.memory_stats.usage.map(|v| v as f64 / 1042f64 / 1024f64);
-        if let Some(m) = mem {
-            self.mem_stats.update(m);
-        }
+        let mem = match stats.memory_stats.usage.map(|v| v as f64 / 1042f64 / 1024f64) {
+            Some(m) => m,
+            None => return None,
+        };
 
-        match (self.previous_cpu, self.previous_system, mem) {
-            (Some(p_cpu), Some(p_system), Some(m)) => {
+        self.mem_stats.update(mem);
 
-                // calculate the change for the cpu usage of the container in between readings
-                let cpu_delta = stats.cpu_stats.cpu_usage.total_usage as f64 - p_cpu;
-                // calculate the change for the entire system between readings
-                let system_delta = stats.cpu_stats.system_cpu_usage.unwrap() as f64 - p_system;
 
-                // Calculate the percentage used by the container
-                let cpu_percent = (cpu_delta / system_delta) * stats.cpu_stats.cpu_usage.percpu_usage.as_ref().unwrap().len() as f64 * 100.0;
+        let (system_cpu, last_system_cpu) = match (stats.cpu_stats.system_cpu_usage, stats.precpu_stats.system_cpu_usage) {
+            (Some(s), Some(l)) => (s, l),
+            _ => return None,
+        };
 
-                self.cpu_stats.update(cpu_percent);
-                
+        let (app_cpu, last_app_cpu) = (stats.cpu_stats.cpu_usage.total_usage, stats.precpu_stats.cpu_usage.total_usage);
 
-                Some((cpu_percent, m))
-            },
-            _ => {
-                self.previous_cpu = Some(stats.cpu_stats.cpu_usage.total_usage as f64);
-                self.previous_system = Some(stats.cpu_stats.system_cpu_usage.unwrap() as f64);
+        let num_cpus = stats.cpu_stats.online_cpus.unwrap();
 
-                None
-            }
-        }
+        
+        // calculate the change for the cpu usage of the container in between readings
+        let cpu_delta = app_cpu as f64 - last_app_cpu as f64;
+
+        // calculate the change for the entire system between readings
+        let system_delta = system_cpu as f64 - last_system_cpu as f64;
+
+        // Calculate the percentage used by the container
+        let cpu_percent = (cpu_delta / system_delta) * num_cpus as f64 * 100.0;
+
+        self.cpu_stats.update(cpu_percent);
+
+        Some((cpu_percent, mem))
     }
 
     /// Fetch current runtime statistics
