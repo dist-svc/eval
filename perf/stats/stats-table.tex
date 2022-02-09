@@ -1,0 +1,74 @@
+\documentclass{article}
+
+\usepackage{geometry}
+\geometry{
+ a4paper,
+ margin=1cm,
+}
+
+\usepackage{xargs}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{tabularx}
+\usepackage{csvsimple}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{pgfplotstable}
+
+% Enable vertical centering in tabularx X column type
+\renewcommand\tabularxcolumn[1]{m{#1}}
+
+\pagestyle{empty}
+\begin{document}
+
+\pgfplotstabletypeset[
+    col sep=comma,
+]{../outputs/coap-cpu.csv}
+
+\begin{figure*}[]
+    \centering
+    %\scriptsize
+
+    \renewcommand{\arraystretch}{1.5}
+    %\setlength\tabcolsep{1pt}
+
+    \begin{tabularx}{\textwidth}{lXXXXX}
+        \toprule
+        \textbf{Broker} & \textbf{Frequency} & \textbf{Latency (ms)} & \textbf{CPU (\%)} & \textbf{Message Loss (\%)} & \textbf{Throughput} \\
+        \midrule
+
+        \multirow{3}{*}{\textbf{MQTT}}
+            & 1 Hz & & & & \\
+            & 2 Hz & & & & \\
+            & 10 Hz & & & & \\
+
+        \cmidrule(lr){1-6}
+
+        \multirow{3}{*}{\textbf{MQTTS}} 
+            & 1 Hz & & & & \\
+            & 2 Hz & & & & \\
+            & 10 Hz & & & & \\
+
+        \cmidrule(lr){1-6}
+
+        \multirow{3}{*}{\textbf{CoAP}} 
+            & 1 Hz & & & & \\
+            & 2 Hz & & & & \\
+            & 10 Hz & & & & \\
+
+        \cmidrule(lr){1-6}
+
+        \multirow{3}{*}{\textbf{CoAPS}} 
+            & 1 Hz & & & & \\
+            & 2 Hz & & & & \\
+            & 10 Hz & & & & \\
+
+        \bottomrule
+    \end{tabularx}
+
+\end{figure*}
+
+\end{document}

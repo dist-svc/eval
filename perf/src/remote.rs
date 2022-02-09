@@ -2,9 +2,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use log::{trace, debug, info, warn};
-
-use clap::arg_enum;
+use log::{trace, debug, info};
 
 use bollard::{Docker, API_DEFAULT_VERSION};
 
@@ -16,7 +14,7 @@ use bollard::container::{
     Config as CreateConfig};
 
 use bollard::service::{HostConfig, PortBinding};
-use bollard::models::{ContainerConfig, Mount, MountTypeEnum};
+use bollard::models::{Mount, MountTypeEnum};
 
 use rolling_stats::Stats;
 use strum_macros::{EnumVariantNames, EnumString, Display};
@@ -36,9 +34,6 @@ pub enum DockerMode {
 
 
 pub struct ContainerStats {
-    previous_cpu: Option<f64>,
-    previous_system: Option<f64>,
-
     cpu_stats: Stats<f64>,
     mem_stats: Stats<f64>,
 }
@@ -47,8 +42,6 @@ impl ContainerStats {
     /// Create a new container-stats object
     pub fn new() -> Self {
         Self {
-            previous_cpu: None,
-            previous_system: None,
             cpu_stats: Stats::new(),
             mem_stats: Stats::new(),
         }

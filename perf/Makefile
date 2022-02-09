@@ -13,3 +13,4 @@ image-dsf:
 	
 run-dsf:
 	cargo run --release -- --docker-mode=http --target=${TARGET} --log-level=info --mode-filters=dsf --output=results/results-dsf.json
+	

@@ -11,6 +11,7 @@ pub enum Error {
     Timeout,
     Unknown,
     InvalidTlsConfiguration,
+    Address,
 }
 
 impl From<paho_mqtt::errors::Error> for Error {

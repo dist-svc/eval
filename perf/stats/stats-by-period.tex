@@ -1,0 +1,180 @@
+\documentclass{article}
+
+\usepackage{geometry}
+\geometry{
+ a4paper,
+ margin=1cm,
+}
+
+\usepackage{xargs}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\usepgfplotslibrary{groupplots}
+\usepackage{tikz}
+\usepackage{tabularx}
+
+\pgfplotsset{compat=1.16}
+
+
+\newcommand{\plotfile}[2]{
+    \pgfplotstableread{#1}{\table}%
+    \pgfplotstablegetcolsof{\table}%
+    \pgfmathtruncatemacro\numberofcols{\pgfplotsretval-1}%
+    \pgfplotsinvokeforeach{1,...,\numberofcols}{
+        \pgfplotstablegetcolumnnamebyindex{##1}\of{\table}\to{\colname}%
+        \addplot table [y index=##1] {#1};%
+        \addlegendentryexpanded{\colname #2}%
+    }
+}
+
+\newcommand{\plotlat}[2]{
+    \scriptsize
+    \begin{tikzpicture}
+        \begin{axis}[
+            %title={#1 Latency (ms)},
+            %xlabel={Number of Clients},
+            %ylabel={Latency (ms)},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            ymode=log,
+            ymin = 1,
+            ymax = 10000,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            %ytick distance=200,
+            %width=\o\textwidth,
+            height=4.5cm
+        ]
+        \plotfile{../outputs/lat-#2.csv}{}
+        \end{axis}
+    \end{tikzpicture}%
+}
+
+\newcommand{\plotcpu}[2]{
+    \scriptsize
+    \begin{tikzpicture}
+        \begin{axis}[
+            %title={#1 CPU Utilisation (\%)},
+            %xlabel={Number of Clients},
+            %ylabel={CPU utilisation (\%)},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            ymin = 0,
+            ymax = 100,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            ytick distance=20,
+            %width=\o\textwidth,
+            height=4.5cm
+        ]
+        \plotfile{../outputs/cpu-#2.csv}{}
+        \end{axis}
+    \end{tikzpicture}%
+}
+
+\newcommand{\plotloss}[2]{
+    \scriptsize
+    \begin{tikzpicture}
+        \begin{axis}[
+            %title={#1 Message Loss (\%)},
+            %xlabel={Number of Clients},
+            %ylabel={Message Loss (\%)},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            ymin = 0,
+            ymax = 100,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            ytick distance=20,
+            %width=\o\textwidth,
+            height=4.5cm
+        ]
+        \plotfile{../outputs/loss-#2.csv}{}
+        \end{axis}
+    \end{tikzpicture}%
+}
+
+\newcommand{\plotthrough}[3]{
+    \scriptsize
+    \begin{tikzpicture}
+        \begin{axis}[
+            %title={#1 Throughput (M/s)},
+            %xlabel={Number of Clients},
+            %ylabel={Messages per second},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            %ymode=log,
+            ymin = 0,
+            ymax = #3,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            ytick distance=250,
+            %width=\o\linewidth,
+            height=4.5cm
+        ]
+        \plotfile{../outputs/throughput-#2.csv}{}
+        \end{axis}
+    \end{tikzpicture}%
+}
+
+% Enable vertical centering in tabularx X column type
+\renewcommand\tabularxcolumn[1]{m{#1}}
+
+\def \w {.24}
+\def \o {1}
+
+\newcommand{\plotrow}[2]{
+    \hfill%
+    \begin{subfigure}{\w\linewidth}
+        \centering%
+        \plotlat{#1}{#2}
+    \end{subfigure}%
+    \hspace*{-20px}
+    \hfill%
+    \begin{subfigure}{\w\linewidth}
+        \centering%
+        \plotcpu{#1}{#2}
+    \end{subfigure}%
+    \hfill%
+    \begin{subfigure}{\w\linewidth}
+        \centering%
+        \plotloss{#1}{#2}
+    \end{subfigure}%
+    \hfill%
+    \begin{subfigure}{\w\linewidth}
+        \centering%
+        \plotthrough{#1}{#2}
+    \end{subfigure}%
+    \hfill%
+}
+
+\pagestyle{empty}
+\begin{document}
+
+
+
+\begin{figure*}[]
+    \centering
+    %\scriptsize
+
+    \setlength\tabcolsep{1pt}
+
+    \begin{tabularx}{\textwidth}{lXXXX}
+        \multicolumn{1}{c}{} & \multicolumn{1}{c}{Latency (ms)} & \multicolumn{1}{c}{CPU Utilisation (\%)} & \multicolumn{1}{c}{Message Loss (\%)} & \multicolumn{1}{c}{Throughput (M/s)} \vspace*{4pt} \\
+        \rotatebox[]{90}{1 Hz} & \plotlat{1 Hz}{1hz} & \plotcpu{1 Hz}{1hz} & \plotloss{1 Hz}{1hz} & \plotthrough{1 Hz}{1hz}{500} \\
+        \rotatebox[]{90}{2 Hz} & \plotlat{2 Hz}{2hz} & \plotcpu{2 Hz}{2hz} & \plotloss{2 Hz}{2hz} & \plotthrough{2 Hz}{2hz}{1000} \\
+        \rotatebox[]{90}{10 Hz} & \plotlat{10 Hz}{10hz} & \plotcpu{10 Hz}{10hz} & \plotloss{10 Hz}{10hz} & \plotthrough{10 Hz}{10hz}{1500} \\
+    \end{tabularx}
+
+\end{figure*}
+
+\end{document}

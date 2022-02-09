@@ -56,7 +56,7 @@ where
 
             // Await start signal
             if let Err(e) = start.recv().await {
-                error!("Start RX error: {:?}", e);
+                error!("Publisher start RX error: {:?}", e);
                 return Err(Error::Unknown)
             }
 
@@ -122,7 +122,7 @@ where
 
             // Await start
             if let Err(e) = start.recv().await {
-                error!("Start RX error: {:?}", e);
+                error!("Subscriber start RX error: {:?}", e);
                 return Err(Error::Unknown)
             }
 

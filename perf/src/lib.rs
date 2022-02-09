@@ -105,16 +105,16 @@ pub struct DriverConfig {
     pub env: Vec<String>,
 }
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug, Serialize, Deserialize, EnumString, Display, EnumVariantNames)]
+#[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, EnumVariantNames)]
 #[strum(serialize_all = "kebab_case")]
 #[serde(rename_all = "lowercase")]
 pub enum DriverMode {
-    Coap,
-    Coaps,
-    Mqtt,
-    Mqtts,
-    Dsf,
-    Loop,
+    Coap = 1,
+    Coaps = 2,
+    Mqtt = 3,
+    Mqtts = 4,
+    Dsf = 5,
+    Loop = 6,
 }
 
 impl DriverMode {
@@ -376,6 +376,9 @@ where
         let p = mode.path(&targets[i % targets.len()]);
         driver.new( p, i, id)
     }).collect();
+
+    tokio::task::yield_now().await;
+
     let mut sub_clients = try_join_all_windowed(sub_clients, 10).await?;
 
     // Setup publishers
@@ -388,6 +391,9 @@ where
         let p = mode.path(&targets[0]);
         driver.new(p, i, id)
     }).collect();
+
+    tokio::task::yield_now().await;
+
     let mut pub_clients = try_join_all_windowed(pub_clients, 10).await?;
 
     let topics: Vec<_> = pub_clients.iter().map(|c| {
@@ -403,6 +409,9 @@ where
         Agent::new_publisher(c, start_tx.subscribe(), pub_done_tx.subscribe(),
                 session, topic, message_size, test.publish_period)
     }).collect();
+
+    tokio::task::yield_now().await;
+
     let mut publishers: Vec<_> = future::try_join_all(pubs).await?;
 
     debug!("Setting up subscribers");
@@ -413,6 +422,9 @@ where
         Agent::new_subscriber(c, start_tx.subscribe(), sub_done_tx.subscribe(),
                 session, vec![topic])
     }).collect();
+
+    tokio::task::yield_now().await;
+
     let mut subscribers: Vec<_> = future::try_join_all(subs).await?;
 
 
@@ -473,6 +485,7 @@ where
     // Then subscribers
     sub_done_tx.send(()).unwrap();
 
+    let _ = start_tx;
 
     // Collect stats
     let mut container_stats: Vec<_> = futures::future::join_all(stats_tasks.drain(..)).await;

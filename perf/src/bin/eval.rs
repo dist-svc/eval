@@ -40,6 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SimpleLogger::init(opts.log_level, log_config)?;
     }
 
+    //console_subscriber::init();
+
     // Load configuration from file
     let config_data = std::fs::read_to_string(&opts.config).expect("error reading configuration file");
     let config: Config = toml::from_str(&config_data).expect("error parsing configuration file");

@@ -1,6 +1,6 @@
 
 [base]
-runtime = "10s"
+runtime = "20s"
 tls_ca = ".certs/ca.crt"
 tls_cert = ".certs/client.crt"
 tls_key = ".certs/client.key"
@@ -8,7 +8,7 @@ tls_key = ".certs/client.key"
 [matrix]
 #clients = [ 10, 25, 50, 75, 100, 125, 150, 175, 200 ]
 #clients = [ 10, 50, 100, 150, 200 ]
-clients = [ 10 ]
+clients = [ 200 ]
 #frequency = [ 1, 2, 10 ]
 frequency = [ 10 ]
 message_len = 32

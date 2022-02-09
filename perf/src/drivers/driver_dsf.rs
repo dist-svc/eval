@@ -38,7 +38,10 @@ impl Driver for DsfDriver {
 
     /// Create a new client using the provided driver
     async fn new(&self, server: String, index: usize, name: String) -> Result<Self::Client, Error> {
-        let s = server.to_socket_addrs().unwrap().next().unwrap();
+        let s = match server.to_socket_addrs().map(|mut a| a.next() ) {
+            Ok(Some(a)) => a,
+            _ => return Err(Error::Address)
+        };
         DsfClient::new(index, name, s).await
     }
 }
@@ -85,7 +88,7 @@ impl DsfClient {
         let mut svc = ServiceBuilder::default().build().unwrap();
 
         // Generate service page
-        let primary = svc.publish_primary_buff(Default::default()).unwrap();
+        let (_n, primary) = svc.publish_primary_buff(Default::default()).unwrap();
 
         // Bind UDP socket
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
@@ -106,7 +109,14 @@ impl DsfClient {
             loop {
                 tokio::select!(
                     // Handle outgoing requests
-                    Some((req_id, address, op, resp_ch)) = req_rx.recv() => {
+                    outgoing = req_rx.recv() => {
+                        let (req_id, address, op, resp_ch) = match outgoing {
+                            Some(v) => v,
+                            None => {
+                                error!("Outgoing channel closed");
+                                return Err(Error::Unknown)
+                            }
+                        };
                         
                         let mut req = match op {
                             Op::Req(mut req) => {
@@ -114,8 +124,7 @@ impl DsfClient {
                                 req
                             },
                             Op::Register => {
-                                let (_n, c) = svc.publish_primary_buff(Default::default()).unwrap();
-                                let kind = NetRequestKind::Register(svc.id(), vec![Page::try_from(c).unwrap()]);
+                                let kind = NetRequestKind::Register(svc.id(), vec![Page::try_from(primary.clone()).unwrap()]);
                                 let mut req = NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED | Flags::PUB_KEY_REQUEST);
                                 req.common.public_key = svc_keys.pub_key.clone();
                                 req
@@ -163,7 +172,16 @@ impl DsfClient {
                         }
                     },
                     // Handle incoming messages
-                    Ok((n, address)) = sock.recv_from(&mut buff) => {
+                    incoming = sock.recv_from(&mut buff) => {
+
+                        let (n, address) = match incoming {
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!("Incoming socket closed: {:?}", e);
+                                return Err(Error::Unknown)
+                            }
+                        };
+
                         trace!("Recieve UDP from {}", address);
 
                         // Parse message (no key / secret stores)
@@ -279,6 +297,7 @@ impl DsfClient {
                     },
                     Some(_) = exit_rx.recv() => {
                         debug!("Exiting receive task");
+                        drop(sock);
                         return Ok(());
                     }
                 )
