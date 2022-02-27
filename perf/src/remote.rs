@@ -143,7 +143,8 @@ pub async fn container_start(remote: &mut Docker, index: u32, image: &str, comma
             mounts: Some(mounts),
             // seccomp:unconfined due to https://github.com/moby/moby/issues/40734
             security_opt: Some(vec!["seccomp:unconfined".to_string()]),
-            nano_cpus: Some(1i64 * 10i64.pow(9)),
+            // CPU limiting hurts us more than it does anyone else...
+            //nano_cpus: Some(1i64 * 10i64.pow(9)),
             ..Default::default()
         }),
         ..Default::default()

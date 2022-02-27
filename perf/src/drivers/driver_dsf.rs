@@ -49,6 +49,8 @@ impl Driver for DsfDriver {
 /// Number of retries for lost messages
 const DSF_RETRIES: usize = 1;
 
+const DSF_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Enable symmetric crypto
 const SYMMETRIC_EN: bool = true;
 
@@ -108,6 +110,12 @@ impl DsfClient {
 
             loop {
                 tokio::select!(
+                    // Handle exit command
+                    Some(_) = exit_rx.recv() => {
+                        debug!("Exiting receive task");
+                        drop(sock);
+                        return Ok(());
+                    }
                     // Handle outgoing requests
                     outgoing = req_rx.recv() => {
                         let (req_id, address, op, resp_ch) = match outgoing {
@@ -289,11 +297,6 @@ impl DsfClient {
                         }
                       
                     },
-                    Some(_) = exit_rx.recv() => {
-                        debug!("Exiting receive task");
-                        drop(sock);
-                        return Ok(());
-                    }
                 )
             }
         });
@@ -336,7 +339,7 @@ impl DsfClient {
             }
 
             // Await response
-            match time::timeout(Duration::from_secs(5), rx.recv()).await {
+            match time::timeout(DSF_TIMEOUT, rx.recv()).await {
                 Ok(Some(v)) => return Ok(v.data),
                 _ => continue,
             }
@@ -422,7 +425,7 @@ impl Client for DsfClient {
             }
 
             // Await response
-            match time::timeout(Duration::from_secs(5), rx.recv()).await {
+            match time::timeout(DSF_TIMEOUT, rx.recv()).await {
                 Ok(Some(v)) => return Ok(()),
                 _ => continue,
             }
@@ -445,7 +448,7 @@ impl Client for DsfClient {
             }
 
             // Await response
-            match time::timeout(Duration::from_secs(5), rx.recv()).await {
+            match time::timeout(DSF_TIMEOUT, rx.recv()).await {
                 Ok(Some(v)) => return Ok(()),
                 _ => continue,
             }
@@ -474,10 +477,17 @@ impl Client for DsfClient {
         }
 
         // Join on handler
+        #[cfg(nope)]
         if let Err(e) = self.udp_handle.await {
             error!("DSF client task error: {:?}", e);
         }
 
         Ok(())
+    }
+}
+
+impl Drop for DsfClient {
+    fn drop(&mut self) {
+        trace!("Drop DSF client: {:?}", self.index);
     }
 }

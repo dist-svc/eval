@@ -7,8 +7,8 @@ mkdir -p /etc/dsf
 export DSF_DB_FILE=/run/dsfd.db
 export DSF_SOCK=/var/dsfd.sock
 
-# Limit to one thread for fairness
-export ASYNC_STD_THREAD_COUNT=1
+# Limit to one thread for fairness (effected via docker cpu cgroup)
+#export ASYNC_STD_THREAD_COUNT=1
 
 # Run DSF
 /usr/local/bin/dsfd --no-bootstrap

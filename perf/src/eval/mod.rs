@@ -2,7 +2,7 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::marker::PhantomData;
 
-use log::{trace, debug, error};
+use log::{trace, debug, warn, error};
 use serde::{Serialize, Deserialize};
 
 use futures::stream::StreamExt;
@@ -84,7 +84,7 @@ where
                         let i = Instant::now();
 
                         if let Err(e) = c.publish(&topic, &buff).await {
-                            error!("Publish error: {:?}", e);
+                            warn!("Publish error: {:?}", e);
                         } else {
                             let d = Instant::now().duration_since(i);
 

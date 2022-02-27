@@ -11,8 +11,8 @@ frequency = [ 10 ]
 message_len = 32
 
 [[matrix.clients]]
-publishers = 10
-subscribers = 400
+publishers = 200
+subscribers = 200
 
 
 [[drivers]]
@@ -28,6 +28,7 @@ port = 8883
 [[drivers]]
 mode = "coap"
 container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-coap"
+command = "coap-server --endpoints 1000"
 port = 5683
 
 [[drivers]]
