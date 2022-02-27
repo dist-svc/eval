@@ -65,11 +65,17 @@ pub struct Config {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct Matrix {
-    clients: Vec<usize>,
+    clients: Vec<Clients>,
 
     frequency: Vec<usize>,
 
     message_len: usize,
+}
+
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub struct Clients {
+    pub publishers: usize,
+    pub subscribers: usize,
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
@@ -237,8 +243,8 @@ pub async fn run_tests(options: &Options, config: &Config, output_dir: &str) -> 
         for c in &config.matrix.clients {
             for f in &config.matrix.frequency {
                 tests.push(TestConfig{
-                    num_subscribers: *c,
-                    num_publishers: *c,
+                    num_publishers: c.publishers,
+                    num_subscribers: c.subscribers,
                     message_size: m.message_len,
                     publish_period: Duration::from_secs(1) / (*f as u32),
                     disabled: false,
@@ -417,7 +423,7 @@ where
     debug!("Setting up subscribers");
 
     let subs: Vec<_> = sub_clients.drain(..).enumerate().map(|(i, c)| {
-        let topic = topics[i].clone();
+        let topic = topics[i % test.num_publishers].clone();
         debug!("Subscribe to topic: {}", topic);
         Agent::new_subscriber(c, start_tx.subscribe(), sub_done_tx.subscribe(),
                 session, vec![topic])
@@ -505,7 +511,9 @@ where
 
     let sent = Stats::merge(results_pub.drain(..).filter_map(|v| v.ok() ));
     let latency = Stats::merge(results_sub.drain(..).filter_map(|v| v.ok() ));
-    let packet_loss = 1f64 - ((latency.count as f64) / (sent.count as f64));
+    
+    let packet_loss = 1f64 - ((latency.count as f64) / (sent.count as f64) * (test.num_publishers as f64) / (test.num_subscribers) as f64);
+
     let throughput = latency.count as f64 / base.runtime.as_secs_f64();
 
 

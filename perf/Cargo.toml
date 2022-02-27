@@ -15,7 +15,7 @@ simplelog = "0.8.0"
 structopt = "0.3.16"
 async-trait = "0.1.38"
 
-log = { version = "0.4.11", features = [ "release_max_level_trace" ] }
+log = { version = "0.4.11", features = [ "release_max_level_trace", "max_level_trace" ] }
 
 humantime = "2.0.1"
 humantime-serde = "1.0.0"
@@ -34,7 +34,7 @@ handlebars = "3.5.0"
 string_template = "0.2.1"
 thiserror = "1.0.23"
 udp-dtls = "0.1.0"
-coap-client = "0.2.1"
+coap-client = "0.3.1"
 strum_macros = "0.20.1"
 strum = "0.20.0"
 cbor = "0.4.1"
@@ -87,7 +87,7 @@ dsf-core = { path = "../../dsf-workspace/dsf-core" }
 dsf-rpc = { path = "../../dsf-workspace/dsf-rpc" }
 dsf-client = { path = "../../dsf-workspace/dsf-client" }
 
-#coap-client = { path = "../coap-client" }
+#coap-client = { path = "../../rust-coap-client" }
 #paho-mqtt = { path = "../rust-paho-mqtt" }
 
 #dsf-core = { git = "https://github.com/dist-svc/dsf-core"  }

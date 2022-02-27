@@ -39,6 +39,10 @@ pub struct Args {
     /// Restructuring mode
     pub mode: Mode,
 
+    #[structopt(long)]
+    /// Result filters
+    pub ignore: Vec<String>,
+
     #[structopt(long = "log-level", default_value = "info")]
     /// Configure app logging levels (warn, info, debug, trace)
     pub log_level: LevelFilter,
@@ -73,8 +77,8 @@ fn main() -> Result<(), anyhow::Error>{
 
     // Parse out unique keys
     // Generate per-publisher keys
-    let mut publishers: Vec<_> = results.iter().map(|v| v.test.num_publishers).unique().collect();
-    publishers.sort();
+    let mut subscribers: Vec<_> = results.iter().map(|v| v.test.num_subscribers).unique().collect();
+    subscribers.sort();
 
     let mut periods: Vec<_> = results.iter().map(|v| v.test.publish_period).unique().collect();
     periods.sort();
@@ -87,11 +91,11 @@ fn main() -> Result<(), anyhow::Error>{
 
     // Split by mode then period
     let results_by_mode = flatten_mode(&results);
-    let results_by_mode_publisher = results_by_mode.iter().map(|(k, v)| (k, flatten_publishers(&v)) );
+    let results_by_mode_subscriber = results_by_mode.iter().map(|(k, v)| (k, flatten_subscribers(&v)) );
 
     //let m2 = m1.iter().map(|(k, v)| (k, flatten_period(v.clone())) );
 
-    let result_modes = HashMap::<_, _, RandomState>::from_iter(results_by_mode_publisher);
+    let result_modes = HashMap::<_, _, RandomState>::from_iter(results_by_mode_subscriber);
 
     //let mut flattened = vec![];
 
@@ -104,7 +108,7 @@ fn main() -> Result<(), anyhow::Error>{
 
         info!("Writing {}", filename);
 
-        write_stats_by_period(&filename, &publishers, &periods, &m_results, |f| f.cpu_percent.mean )?;
+        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.cpu_percent.mean )?;
 
         
         let mut filename = format!("{}/{}-lat.csv", opts.output_dir, m);
@@ -112,7 +116,7 @@ fn main() -> Result<(), anyhow::Error>{
 
         info!("Writing {}", filename);
 
-        write_stats_by_period(&filename, &publishers, &periods, &m_results, |f| f.latency.mean / 1e3 )?;
+        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.latency.mean / 1e3 )?;
 
 
         let mut filename = format!("{}/{}-loss.csv", opts.output_dir, m);
@@ -120,19 +124,19 @@ fn main() -> Result<(), anyhow::Error>{
 
         info!("Writing {}", filename);
 
-        write_stats_by_period(&filename, &publishers, &periods, &m_results, |f| f.packet_loss * 100.0 )?;
+        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.packet_loss * 100.0 )?;
 
         let mut filename = format!("{}/{}-throughput.csv", opts.output_dir, m);
         filename.make_ascii_lowercase();
 
         info!("Writing {}", filename);
 
-        write_stats_by_period(&filename, &publishers, &periods, &m_results, |f| f.throughput )?;
+        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.throughput )?;
     }
 
     // Split by period then mode
     let results_by_period = flatten_period(&results);
-    let results_by_period_publisher = results_by_period.iter().map(|(k, v)| (k, flatten_publishers(&v)) );
+    let results_by_period_publisher = results_by_period.iter().map(|(k, v)| (k, flatten_subscribers(&v)) );
     let periods = HashMap::<_, _, RandomState>::from_iter(results_by_period_publisher);
 
     for (p, p_results) in &periods {
@@ -141,22 +145,22 @@ fn main() -> Result<(), anyhow::Error>{
         let mut filename = format!("{}/cpu-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &publishers, &modes, &p_results, |f| f.cpu_percent.mean )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.cpu_percent.mean )?;
 
         let mut filename = format!("{}/lat-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &publishers, &modes, &p_results, |f| f.latency.mean / 1e3 )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.latency.mean / 1e3 )?;
 
         let mut filename = format!("{}/loss-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &publishers, &modes, &p_results, |f| f.packet_loss * 100.0 )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.packet_loss * 100.0 )?;
 
         let mut filename = format!("{}/throughput-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &publishers, &modes, &p_results, |f| f.throughput )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.throughput )?;
     }
 
 
@@ -201,7 +205,20 @@ fn flatten_publishers(results: &[Results]) -> HashMap<usize, Vec<Results>> {
     f
 }
 
-fn write_stats_by_period<F>(filename: &str, publishers: &[usize], periods: &[Duration], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
+fn flatten_subscribers(results: &[Results]) -> HashMap<usize, Vec<Results>> {
+    let mut f = HashMap::<usize, Vec<Results>>::new();
+
+    for r in results {
+        f.entry(r.test.num_subscribers)
+            .and_modify(|v| v.push(r.clone()) )
+            .or_insert(vec![r.clone()]);
+    }
+
+    f
+}
+
+
+fn write_stats_by_period<F>(filename: &str, subscribers: &[usize], periods: &[Duration], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
 where
     F: Fn(&Results) -> f64,
 {
@@ -210,7 +227,7 @@ where
     let mut w = csv::Writer::from_path(filename)?;
 
     // Generate header
-    let mut header = vec![format!("publishers")];
+    let mut header = vec![format!("subscribers")];
     let mut p: Vec<_> = periods.iter().map(|v| {
         format!("{}", 1.0e3 / v.as_millis() as f64)
     }).collect();
@@ -221,9 +238,9 @@ where
     w.serialize(&header)?;
 
     // Write data for each row
-    for n in publishers {
+    for n in subscribers {
 
-        // Fetch the matching result row for a given number of publishers
+        // Fetch the matching result row for a given number of subscribers
         if let Some(r) = results.get(n) {
             let mut row = vec![Some(*n as f64)];
 
@@ -245,7 +262,7 @@ where
     Ok(())
 }
 
-fn write_stats_by_mode<F>(filename: &str, publishers: &[usize], modes: &[DriverMode], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
+fn write_stats_by_mode<F>(filename: &str, subscribers: &[usize], modes: &[DriverMode], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
 where
     F: Fn(&Results) -> f64,
 {
@@ -254,7 +271,7 @@ where
     let mut w = csv::Writer::from_path(filename)?;
 
     // Generate header
-    let mut header = vec![format!("publishers")];
+    let mut header = vec![format!("subscribers")];
     let mut p: Vec<_> = modes.iter().map(|v| {
         format!("{}", v)
     }).collect();
@@ -265,7 +282,7 @@ where
     w.serialize(&header)?;
 
     // Write data for each row
-    for n in publishers {
+    for n in subscribers {
 
         // Fetch the matching result row for a given number of publishers
         if let Some(r) = results.get(n) {

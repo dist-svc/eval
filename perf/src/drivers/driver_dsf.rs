@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use dsf_core::wire::Container;
 use futures::{Stream};
-use tokio::sync::mpsc::{channel, Sender, Receiver};
+use tokio::sync::mpsc::{channel, unbounded_channel, Sender, Receiver, UnboundedSender, UnboundedReceiver};
 use tokio::task::{JoinHandle};
 use tokio::time;
 use tokio::net::{UdpSocket};
@@ -60,8 +60,8 @@ pub struct DsfClient {
 
     svc_id: Id,
 
-    msg_in_rx: Receiver<Vec<u8>>,
-    req_tx: Sender<(u16, SocketAddr, Op, Sender<NetResponse>)>,
+    msg_in_rx: UnboundedReceiver<Vec<u8>>,
+    req_tx: UnboundedSender<(u16, SocketAddr, Op, Sender<NetResponse>)>,
 
     topics: Vec<Id>,
 
@@ -94,8 +94,8 @@ impl DsfClient {
         let sock = UdpSocket::bind("0.0.0.0:0").await.unwrap();
 
         let (exit_tx, mut exit_rx) = channel(1);
-        let (msg_in_tx, msg_in_rx) = channel(1000);
-        let (req_tx, mut req_rx) = channel::<(u16, SocketAddr, Op, Sender<NetResponse>)>(1000);
+        let (msg_in_tx, msg_in_rx) = unbounded_channel();
+        let (req_tx, mut req_rx) = unbounded_channel::<(u16, SocketAddr, Op, Sender<NetResponse>)>();
 
         let (svc_id, svc_keys) = (svc.id(), svc.keys());
 
@@ -124,15 +124,15 @@ impl DsfClient {
                                 req
                             },
                             Op::Register => {
-                                let kind = NetRequestKind::Register(svc.id(), vec![Page::try_from(primary.clone()).unwrap()]);
-                                let mut req = NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED | Flags::PUB_KEY_REQUEST);
+                                let kind = net::RequestBody::Register(svc.id(), vec![primary.to_owned()]);
+                                let mut req = net::Request::new(svc.id(), req_id, kind, Flags::CONSTRAINED | Flags::PUB_KEY_REQUEST);
                                 req.common.public_key = svc_keys.pub_key.clone();
                                 req
                             },
                             Op::Publish(data) => {
                                 let opts = DataOptions{body: Some(data.as_ref()), ..Default::default()};
                                 let (_n, c) = svc.publish_data_buff(opts).unwrap();
-                                let kind = NetRequestKind::PushData(svc.id(), vec![Page::try_from(c).unwrap()]);
+                                let kind = net::RequestBody::PushData(svc.id(), vec![c.to_owned()]);
                                 NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED)
                             },
                         };
@@ -229,7 +229,7 @@ impl DsfClient {
                             (NetMessage::Request(req), _) => {
 
                                 // Respond with OK
-                                let mut resp = net::Response::new(svc.id(), req_id, net::ResponseKind::Status(net::Status::Ok), Flags::empty());
+                                let mut resp = net::Response::new(svc.id(), req_id, net::ResponseBody::Status(net::Status::Ok), Flags::empty());
 
                                 // Fetch keys and enable symmetric mode if available
                                 let enc_key = match keys.get(&req.from) {
@@ -255,21 +255,15 @@ impl DsfClient {
 
                                 // Handle RX'd data
                                 let page = match req.data {
-                                    NetRequestKind::PushData(_id, pages) if pages.len() > 0 => pages[0].clone(),
+                                    net::RequestBody::PushData(_id, pages) if pages.len() > 0 => pages[0].clone(),
                                     _ => continue,
                                 };
 
-                                let data = match page.body() {
-                                    Body::Cleartext(v) => v,
-                                    _ => {
-                                        warn!("Received push with no data");
-                                        continue
-                                    },
-                                };
+                                let data = page.body_raw().to_vec();
 
                                 debug!("Received data push: {:?}", data);
 
-                                if let Err(e) = msg_in_tx.send(data.clone()).await {
+                                if let Err(e) = msg_in_tx.send(data.clone()) {
                                     error!("Message RX send error: {:?}", e);
                                     //break Err(Error::Unknown);
                                     continue;
@@ -277,8 +271,8 @@ impl DsfClient {
                             },
                             (NetMessage::Response(resp), Some(resp_tx)) => {
                                 match &resp.data {
-                                    net::ResponseKind::ValuesFound(id, pages) => {
-                                        for p in pages.iter().filter_map(|p| p.info().pub_key()) {
+                                    net::ResponseBody::ValuesFound(id, pages) => {
+                                        for p in pages.iter().filter_map(|p| p.info().ok().map(|i| i.pub_key() )).flatten() {
                                             keys.insert(id.clone(), Keys::new(p));
                                         }
                                     },
@@ -323,7 +317,7 @@ impl DsfClient {
    }
 
 
-   pub async fn request(&mut self, kind: NetRequestKind) -> Result<NetResponseKind, Error> {
+   pub async fn request(&mut self, kind: net::RequestBody) -> Result<net::ResponseBody, Error> {
         self.req_id = self.req_id.wrapping_add(1);
 
         // Build and encode message
@@ -337,7 +331,7 @@ impl DsfClient {
         // Transmit request (with retries)
         for _i in 0..DSF_RETRIES {
             // Send request data
-            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Req(req.clone()), tx.clone())).await {
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Req(req.clone()), tx.clone())) {
                 continue;
             }
 
@@ -378,9 +372,9 @@ impl Client for DsfClient {
         debug!("Issuing subscribe request for {}", self.svc_id.to_string());
 
         // First, locate the service (DHT lookup)
-        let resp = self.request(NetRequestKind::Locate(id.clone())).await;
+        let resp = self.request(net::RequestBody::Locate(id.clone())).await;
         let _svc = match resp {
-            Ok(NetResponseKind::ValuesFound(_id, _pages)) => {
+            Ok(net::ResponseBody::ValuesFound(_id, _pages)) => {
                 debug!("Located service: {}", id);
             },
             Err(e) => {
@@ -391,9 +385,9 @@ impl Client for DsfClient {
         };
 
         // Then, subscribe to service
-        let resp = self.request(NetRequestKind::Subscribe(id.clone())).await;
+        let resp = self.request(net::RequestBody::Subscribe(id.clone())).await;
         match resp {
-            Ok(NetResponseKind::Status(Status::Ok)) => {
+            Ok(net::ResponseBody::Status(Status::Ok)) => {
                 self.topics.push(id.clone());
 
                 debug!("Subscribed to service: {}", id);
@@ -423,7 +417,7 @@ impl Client for DsfClient {
         // Transmit request (with retries)
         for _i in 0..DSF_RETRIES {
             // Send request data
-            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Register, tx.clone())).await {
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Register, tx.clone())) {
                 continue;
             }
 
@@ -446,7 +440,7 @@ impl Client for DsfClient {
         // Transmit request (with retries)
         for _i in 0..DSF_RETRIES {
             // Send request data
-            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Publish(data.to_vec()), tx.clone())).await {
+            if let Err(_e) = self.req_tx.send((self.req_id, self.server, Op::Publish(data.to_vec()), tx.clone())) {
                 continue;
             }
 
@@ -463,9 +457,9 @@ impl Client for DsfClient {
     async fn close(mut self) -> Result<(), Error> {
         for t in self.topics.clone() {
             // Request de-registration
-            let resp = self.request(NetRequestKind::Unsubscribe(t.clone())).await;
+            let resp = self.request(net::RequestBody::Unsubscribe(t.clone())).await;
             match &resp {
-                Ok(NetResponseKind::Status(net::Status::Ok)) => {
+                Ok(net::ResponseBody::Status(net::Status::Ok)) => {
                     debug!("Deregistered service: {}", t);
                 },
                 _ => {

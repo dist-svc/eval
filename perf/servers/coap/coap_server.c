@@ -311,31 +311,31 @@ int main(int argc, char **argv) {
 
     for (int i=0; i<endpoints; i++) {
 
-      // Setup resource context
-      resource_ctx_s *resource_ctx = (resource_ctx_s*) calloc(sizeof(resource_ctx_s), 1);
-#ifdef COAP_USE_MUTEX
-      pthread_mutex_init(&resource_ctx.mutex, NULL);
-#endif
-      // Register resource
-      char endpoint_name[32] = { 0 };
-      snprintf(endpoint_name, sizeof(endpoint_name), "data-%d", i);
-      
-      coap_str_const_t *path = coap_new_str_const(endpoint_name, strlen(endpoint_name));
-      //COAP_SET_STR(path, endpoint_name, strlen(endpoint_name)-1);
-      resources[i] = coap_resource_init(path, 0);
+        // Setup resource context
+        resource_ctx_s *resource_ctx = (resource_ctx_s*) calloc(sizeof(resource_ctx_s), 1);
+    #ifdef COAP_USE_MUTEX
+        pthread_mutex_init(&resource_ctx.mutex, NULL);
+    #endif
+        // Register resource
+        char endpoint_name[32] = { 0 };
+        snprintf(endpoint_name, sizeof(endpoint_name), "data-%d", i);
+        
+        coap_str_const_t *path = coap_new_str_const(endpoint_name, strlen(endpoint_name));
+        //COAP_SET_STR(path, endpoint_name, strlen(endpoint_name)-1);
+        resources[i] = coap_resource_init(path, 0);
 
-    if(debug) {
-        printf("Registering endpoint: %s\r\n", endpoint_name);
-    }
+        if(debug) {
+            printf("Registering endpoint: %s\r\n", endpoint_name);
+        }
 
-      // Register handlers
-      coap_register_handler(resources[i], COAP_REQUEST_GET, &get_handle);
-      coap_register_handler(resources[i], COAP_REQUEST_PUT, &put_handle);
+        // Register handlers
+        coap_register_handler(resources[i], COAP_REQUEST_GET, &get_handle);
+        coap_register_handler(resources[i], COAP_REQUEST_PUT, &put_handle);
 
-      // Bind context and set observable
-      coap_resource_set_userdata(resources[i], resource_ctx);
-      coap_resource_set_get_observable(resources[i], 1);
-      coap_add_resource(ctx, resources[i]);
+        // Bind context and set observable
+        coap_resource_set_userdata(resources[i], resource_ctx);
+        coap_resource_set_get_observable(resources[i], 1);
+        coap_add_resource(ctx, resources[i]);
     }
 
     // Bind exit handler

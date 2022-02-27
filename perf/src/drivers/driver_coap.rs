@@ -105,7 +105,14 @@ impl Client for CoapClient {
         let mut req_opts = RequestOptions::default();
         req_opts.timeout = Duration::from_secs(10);
 
-        let observer = self.client.observe(topic, &req_opts).await;
+        let observer = match self.client.observe(topic, &req_opts).await {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Failed to set observe on: {}: {:?}", topic, e);
+                return Err(e.into());
+            }
+        };
+
         self.subs.push(observer);
 
         Ok(())
