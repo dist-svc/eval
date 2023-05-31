@@ -63,7 +63,7 @@ pub struct DsfClient {
     svc_id: Id,
 
     msg_in_rx: UnboundedReceiver<Vec<u8>>,
-    req_tx: UnboundedSender<(u16, SocketAddr, Op, Sender<NetResponse>)>,
+    req_tx: UnboundedSender<(RequestId, SocketAddr, Op, Sender<NetResponse>)>,
 
     topics: Vec<Id>,
 
@@ -72,7 +72,7 @@ pub struct DsfClient {
 }
 
 struct Req {
-    req_id: u16, 
+    req_id: RequestId, 
     addr: SocketAddr,
     op: Op, 
     resp: Sender<NetResponse>,
@@ -87,7 +87,7 @@ enum Op {
 impl DsfClient {
    pub async fn new(index: usize, _name: String, server: SocketAddr) -> Result<Self, Error> {
         // Create DSF service
-        let mut svc = ServiceBuilder::default().build().unwrap();
+        let mut svc = ServiceBuilder::<Vec<_>>::default().build().unwrap();
 
         // Generate service page
         let (_n, primary) = svc.publish_primary_buff(Default::default()).unwrap();
@@ -106,7 +106,7 @@ impl DsfClient {
             let mut buff = vec![0u8; 1024];
             let mut peer_id = None;
             let mut keys = HashMap::<Id, Keys>::new();
-            let mut rx_handles = HashMap::<u16, Sender<NetResponse>>::new();
+            let mut rx_handles = HashMap::<RequestId, Sender<NetResponse>>::new();
 
             loop {
                 tokio::select!(
@@ -163,7 +163,7 @@ impl DsfClient {
                         };
                         
                         // Encode message
-                        let c = match svc.encode_request_buff(&req, enc_key) {
+                        let c = match svc.encode_request_buff::<1024>(&req, enc_key) {
                             Ok(c) => c,
                             Err(e) => {
                                 error!("Error encoding message: {:?}", e);
@@ -193,8 +193,8 @@ impl DsfClient {
                         trace!("Recieve UDP from {}", address);
 
                         // Parse message (no key / secret stores)
-                        let base = match Container::parse(&buff[..n], &keys) {
-                            Ok(v) => (v),
+                        let base = match Container::parse(&mut buff[..n], &keys) {
+                            Ok(v) => v,
                             Err(e) => {
                                 error!("DSF parsing error: {:?}", e);
                                 continue;
@@ -209,7 +209,7 @@ impl DsfClient {
                         }
                         
                         // Convert to network message
-                        let req_id = base.header().index();
+                        let req_id = base.header().index() as u16;
                         let m = match NetMessage::convert(base, &keys) {
                             Ok(m) => m,
                             Err(_e) => {
@@ -253,7 +253,7 @@ impl DsfClient {
                                     },
                                 };
                                                                 
-                                let c = svc.encode_response_buff(&resp, &enc_key).unwrap();
+                                let c = svc.encode_response_buff::<1024>(&resp, &enc_key).unwrap();
 
                                 if let Err(e) = sock.send_to(c.raw(), address.clone()).await {
                                     error!("UDP send error: {:?}", e);

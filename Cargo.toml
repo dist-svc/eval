@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "disc",
+    "perf",
+    "spec",
+]
+
+[patch.crates-io]
+dsf-core = { path = "../dsf/core" }
+dsf-client = { path = "../dsf/client" }
+dsf-engine = { path = "../dsf/engine" }
+dsf-rpc = { path = "../dsf/rpc" }
+
+dsf-iot = { path = "../dsf-iot" }
+
+bollard = { git = "https://github.com/fussybeaver/bollard.git", branch = "ND-disable-named-pipes" }

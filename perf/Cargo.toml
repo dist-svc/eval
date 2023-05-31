@@ -42,13 +42,10 @@ serde_cbor = "0.11.1"
 console-subscriber = "0.1.2"
 
 
-[dependencies.dsf-core]
-version = "0.2.0"
-features = [ "serde" ]
-path = "../../dsf-workspace/dsf-core"
-
-[dependencies.dsf-iot]
-path = "../../dsf-workspace/dsf-iot"
+dsf-core = "0.3.0"
+dsf-rpc = "0.3.0"
+dsf-client = "0.3.0"
+dsf-iot = "0.1.0"
 
 
 [dependencies.tokio]
@@ -72,23 +69,6 @@ float-cmp = "0.8.0"
 name = "iot-perf-eval"
 path = "src/bin/eval.rs"
 
-
 [[bin]]
 name = "iot-perf-reduce"
 path = "src/bin/reduce.rs"
-
-
-[patch.crates-io]
-#coap-client = { git = "https://github.com/ryankurte/rust-coap-client", branch = "main" }
-bollard = { git = "https://github.com/fussybeaver/bollard.git", branch = "ND-disable-named-pipes" }
-
-#rolling-stats = { path = "../rust-rolling-stats" }
-dsf-core = { path = "../../dsf-workspace/dsf-core" }
-dsf-rpc = { path = "../../dsf-workspace/dsf-rpc" }
-dsf-client = { path = "../../dsf-workspace/dsf-client" }
-
-#coap-client = { path = "../../rust-coap-client" }
-#paho-mqtt = { path = "../rust-paho-mqtt" }
-
-#dsf-core = { git = "https://github.com/dist-svc/dsf-core"  }
-sodiumoxide = { git = "https://github.com/sodiumoxide/sodiumoxide.git" }

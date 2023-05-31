@@ -1,18 +1,18 @@
 
-use dsf_core::{options, prelude::*};
-use dsf_iot::{prelude::*, endpoint::{EndpointValue, EndpointKind}};
+use dsf_core::{options, prelude::*, base::Encode, types::DateTime};
+use dsf_iot::{prelude::*, endpoint::{EpValue, EpKind}};
 
 use serde::{Serialize};
 use serde_json::json;
 
 #[derive(Debug, Serialize)]
 struct ExampleService {
-    endpoints: &'static [EndpointKind],
+    endpoints: &'static [EpKind],
     meta: &'static [dsf_core::options::Options],
 }
 
 const SERVICE: ExampleService = ExampleService {
-    endpoints: &[EndpointKind::Temperature, EndpointKind::Pressure, EndpointKind::Humidity],
+    endpoints: &[EpKind::Temperature, EpKind::Pressure, EpKind::Humidity],
     meta: &[dsf_core::options::Options::Coord(options::Coordinates{ lat: 47.874, lng: 88.566, alt: 100.0})]
 };
 
@@ -24,33 +24,33 @@ struct ExampleData {
 #[derive(Debug, Serialize)]
 
 struct ExampleValue {
-    kind: EndpointKind,
+    kind: EpKind,
     value: f32,
     unit: &'static str,
 }
 
 const DATA: ExampleData = ExampleData {
     data: &[  
-        ExampleValue{kind: EndpointKind::Temperature, value: 27.3, unit: "C"},
-        ExampleValue{kind: EndpointKind::Pressure, value: 1024.0, unit: "kPa"},
-        ExampleValue{kind: EndpointKind::Humidity, value: 49.3, unit: "%RH"},
+        ExampleValue{kind: EpKind::Temperature, value: 27.3, unit: "C"},
+        ExampleValue{kind: EpKind::Pressure, value: 1024.0, unit: "kPa"},
+        ExampleValue{kind: EpKind::Humidity, value: 49.3, unit: "%RH"},
     ]
 };
 
-const ENDPOINTS: [EndpointDescriptor; 3] = [
-    EndpointDescriptor{kind: EndpointKind::Temperature, meta: vec![]},
-    EndpointDescriptor{kind: EndpointKind::Pressure, meta: vec![]},
-    EndpointDescriptor{kind: EndpointKind::Humidity, meta: vec![]},
+const ENDPOINTS: [EpDescriptor; 3] = [
+    EpDescriptor{kind: EpKind::Temperature, flags: EpFlags::empty() },
+    EpDescriptor{kind: EpKind::Pressure, flags: EpFlags::empty() },
+    EpDescriptor{kind: EpKind::Humidity, flags: EpFlags::empty() },
 ];
 
 const OPTIONS: [dsf_core::options::Options; 1] = [
     dsf_core::options::Options::Coord(options::Coordinates{ lat: 47.874, lng: 88.566, alt: 100.0}),
 ];
 
-const ENDPOINT_DATA: [EndpointData; 3] = [
-    EndpointData{ value: EndpointValue::Float32(27.3), meta: vec![]},
-    EndpointData{ value: EndpointValue::Float32(1024.0), meta: vec![]},
-    EndpointData{ value: EndpointValue::Float32(49.3), meta: vec![]},
+const ENDPOINT_DATA: [EpData; 3] = [
+    EpData{ value: EpValue::Float32(27.3) },
+    EpData{ value: EpValue::Float32(1024.0) },
+    EpData{ value: EpValue::Float32(49.3) },
 ];
 
 #[test]
@@ -84,7 +84,7 @@ fn encode_dsf_service() {
     // Create endpoints
 
     let mut body = [0u8; 1024];
-    let n = IotService::encode_body(&ENDPOINTS, &mut body).unwrap();
+    let n = Encode::encode(&ENDPOINTS, &mut body).unwrap();
    
     let mut s = ServiceBuilder::default()
         .body(Body::Cleartext((&body[..n]).to_vec()))
@@ -93,7 +93,7 @@ fn encode_dsf_service() {
         .build().unwrap();
  
     let mut buff = [0u8; 1024];
-    let (n, _p) = s.publish_primary(&mut buff).unwrap();
+    let (n, _p) = s.publish_primary(PrimaryOptions{ issued: Some(DateTime::now()), expiry: None }, &mut buff).unwrap();
     let primary = &buff[..n];
 
     println!("DSF encoded service: {:?}, {} bytes", ENDPOINTS, primary.len());
@@ -108,10 +108,10 @@ fn encode_dsf_data() {
         .build().unwrap();
 
     let mut data_buff = [0u8; 128];
-    let n = IotData::encode_data(&ENDPOINT_DATA, &mut data_buff).unwrap();
+    let n = Encode::encode(&ENDPOINT_DATA, &mut data_buff).unwrap();
 
     let page_opts = DataOptions{
-        body: Body::Cleartext((&data_buff[..n]).to_vec()),
+        body: Some((&data_buff[..n])),
         ..Default::default()
     };
 
