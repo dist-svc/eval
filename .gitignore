@@ -14,6 +14,7 @@ build/
 *.key
 
 *.data
+*.lock
 
 perf/servers/coap/coap-server
 perf/servers/coap/coap-server-openssl
