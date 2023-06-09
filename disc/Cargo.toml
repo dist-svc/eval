@@ -20,5 +20,6 @@ tracing-subscriber = { version = "0.3.17", features = [ "env-filter" ] }
 serde = "1.0.163"
 serde_json = "1.0.96"
 humantime = "2.1.0"
-rolling-stats = { version = "0.5.1", features = [ "serde" ] }
+rolling-stats = { version = "0.7.0", features = [ "serde" ] }
 chrono = "0.4.24"
+futures = "*"

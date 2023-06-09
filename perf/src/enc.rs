@@ -111,7 +111,7 @@ fn encode_dsf_data() {
     let n = Encode::encode(&ENDPOINT_DATA, &mut data_buff).unwrap();
 
     let page_opts = DataOptions{
-        body: Some((&data_buff[..n])),
+        body: Body::Cleartext((&data_buff[..n])),
         ..Default::default()
     };
 

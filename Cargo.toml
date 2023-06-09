@@ -4,6 +4,7 @@ members = [
     "perf",
     "spec",
 ]
+resolver = "2"
 
 [patch.crates-io]
 dsf-core = { path = "../dsf/core" }
