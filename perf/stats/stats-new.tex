@@ -1,0 +1,173 @@
+\documentclass{article}
+
+\usepackage{geometry}
+\geometry{
+ a4paper,
+ margin=1cm,
+}
+
+\usepackage{xargs}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{tabularx}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.8}
+\usepgfplotslibrary{fillbetween}
+\usepgfplotslibrary{statistics}
+\usepgfplotslibrary{groupplots}
+\usepackage{pgfplotstable}
+\usepackage{filecontents}
+\usepackage{pgf-umlsd}
+
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usetikzlibrary{external}
+\usetikzlibrary{pgfplots.statistics} 
+
+
+\pgfplotsset{compat=1.16}
+
+\newcommand{\plotcols}[2]{
+    \pgfplotstablegetcolsof{#1}%
+    \pgfmathtruncatemacro\numberofcols{\pgfplotsretval-1}%
+    \pgfplotsinvokeforeach{2,...,\numberofcols}{
+        \pgfplotstablegetcolumnnamebyindex{##1}\of{#1}\to{\colname}%
+        \addplot plot table [x={subscribers}, y={\colname}]{#1};
+        \addlegendentryexpanded{\colname}%
+    }
+}
+
+\pgfplotstableread[col sep=comma, header=has colnames]{../outputs/lat.csv}\latstats
+\pgfplotstableread[col sep=comma, header=has colnames]{../outputs/cpu.csv}\cpustats
+\pgfplotstableread[col sep=comma, header=has colnames]{../outputs/throughput.csv}\tptstats
+\pgfplotstableread[col sep=comma, header=has colnames]{../outputs/loss.csv}\lossstats
+
+
+\definecolor{niceblue}{RGB}{108, 142, 191}
+\definecolor{nicered}{RGB}{184, 84, 80}
+\definecolor{nicegreen}{RGB}{130, 179, 102}
+\definecolor{nicepurple}{RGB}{150, 115, 166}
+\definecolor{niceorange}{RGB}{215, 155, 0}
+
+\pgfplotscreateplotcyclelist{nicelist}{
+    {niceblue,every mark/.append style={fill=niceblue},mark=*},
+    {nicered,every mark/.append style={fill=nicered},mark=square*},
+    {nicegreen,every mark/.append style={fill=nicegreen},mark=triangle*},
+    {nicepurple,every mark/.append style={fill=nicepurple},mark=star},
+    {niceorange,every mark/.append style={fill=niceorange},mark=diamond*}
+}
+
+\pagestyle{empty}
+\begin{document}
+
+
+\begin{figure*}[]
+    \centering
+    \small
+
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={CPU Utilisation},
+            xlabel={Number of Clients},
+            ylabel={CPU utilisation (\%)},
+            legend pos= south east,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            ymin = 0,
+            ymax = 100,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            ytick distance=20,
+            xtick distance=50,
+            width=0.7\textwidth,
+            height=4.5cm,
+            cycle list name=nicelist
+        ]
+
+        \plotcols{\cpustats}{idk}
+
+        \end{axis}
+    \end{tikzpicture}%
+
+    \vspace{1cm}
+
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={Message Latency},
+            xlabel={Number of Clients},
+            ylabel={Latency (ms)},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            %ymode=log,
+            ymin = 0,
+            ymax = 300,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            xtick distance=50,
+            width=0.7\textwidth,
+            height=4.5cm,
+            cycle list name=nicelist
+        ]
+        \plotcols{\latstats}{idk}
+        \end{axis}
+    \end{tikzpicture}%
+
+    \vspace{1cm}
+
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={Throughput},
+            xlabel={Number of Clients},
+            ylabel={Messages / S},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            %ymode=log,
+            ymin = 0,
+            ymax = 2500,
+            xmax = 200,
+            enlarge y limits=0.1,
+            enlarge x limits=0.1,
+            ytick distance=500,
+            xtick distance=50,
+            width=0.7\textwidth,
+            height=4.5cm,
+            cycle list name=nicelist
+        ]
+        \plotcols{\tptstats}{idk}
+        \end{axis}
+    \end{tikzpicture}%
+
+    \vspace{1cm}
+
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={Message Loss},
+            xlabel={Number of Clients},
+            ylabel={Message Loss (\%)},
+            legend pos= north west,
+            table/col sep=comma,
+            legend style={nodes={scale=0.5, transform shape}},
+            ymin = 0,
+            ymax = 100,
+            xmax = 200,
+            enlarge y limits=0.15,
+            enlarge x limits=0.1,
+            ytick distance=20,
+            ytick distance=50,
+            width=0.7\textwidth,
+            height=4.5cm,
+            cycle list name=nicelist
+        ]
+        \plotcols{\lossstats}{idk}
+        \end{axis}
+    \end{tikzpicture}%
+
+    \caption{50 publishers to N subscribers}
+\end{figure*}
+
+\end{document}

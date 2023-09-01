@@ -506,11 +506,11 @@ where
     
     debug!("Subscriber stats: {:?}", results_sub);
 
-    let cpu_percent = Stats::merge(container_stats.iter().map(|s| s.stats().0 ));
-    let mem_percent = Stats::merge(container_stats.iter().map(|s| s.stats().1 ));
+    let cpu_percent = container_stats.iter().map(|s| s.stats().0 ).reduce(|acc, s| acc.merge(&s)).unwrap();
+    let mem_percent = container_stats.iter().map(|s| s.stats().1 ).reduce(|acc, s| acc.merge(&s)).unwrap();
 
-    let sent = Stats::merge(results_pub.drain(..).filter_map(|v| v.ok() ));
-    let latency = Stats::merge(results_sub.drain(..).filter_map(|v| v.ok() ));
+    let sent = results_pub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap();
+    let latency = results_sub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap();
     
     let packet_loss = 1f64 - ((latency.count as f64) / (sent.count as f64) * (test.num_publishers as f64) / (test.num_subscribers) as f64);
 

@@ -69,6 +69,8 @@ fn main() -> Result<(), anyhow::Error>{
             continue;
         }
 
+        info!("Load file: {}", p.display());
+
         let d = std::fs::read_to_string(&p)?;
         let mut r: Vec<Results> = serde_json::from_str(&d)?;
 
@@ -103,65 +105,35 @@ fn main() -> Result<(), anyhow::Error>{
 
         info!("Preparing results for mode: {:?}", m);
 
-        let mut filename = format!("{}/{}-cpu.csv", opts.output_dir, m);
+        let mut filename = format!("{}/{}.csv", opts.output_dir, m);
         filename.make_ascii_lowercase();
 
         info!("Writing {}", filename);
-
-        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.cpu_percent.mean )?;
-
-        
-        let mut filename = format!("{}/{}-lat.csv", opts.output_dir, m);
-        filename.make_ascii_lowercase();
-
-        info!("Writing {}", filename);
-
-        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.latency.mean / 1e3 )?;
-
-
-        let mut filename = format!("{}/{}-loss.csv", opts.output_dir, m);
-        filename.make_ascii_lowercase();
-
-        info!("Writing {}", filename);
-
-        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.packet_loss * 100.0 )?;
-
-        let mut filename = format!("{}/{}-throughput.csv", opts.output_dir, m);
-        filename.make_ascii_lowercase();
-
-        info!("Writing {}", filename);
-
-        write_stats_by_period(&filename, &subscribers, &periods, &m_results, |f| f.throughput )?;
+        write_stats_by_period(&filename, &subscribers, &periods, &m_results)?;
     }
 
-    // Split by period then mode
-    let results_by_period = flatten_period(&results);
-    let results_by_period_publisher = results_by_period.iter().map(|(k, v)| (k, flatten_subscribers(&v)) );
-    let periods = HashMap::<_, _, RandomState>::from_iter(results_by_period_publisher);
+        info!("Preparing results by type");
 
-    for (p, p_results) in &periods {
-        info!("Preparing results for period: {:?}", p);
-
-        let mut filename = format!("{}/cpu-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
+        let mut filename = format!("{}/cpu.csv", opts.output_dir);
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.cpu_percent.mean )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.cpu_percent.mean )?;
 
-        let mut filename = format!("{}/lat-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
+        let mut filename = format!("{}/lat.csv", opts.output_dir);
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.latency.mean / 1e3 )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.latency.mean / 1e3 )?;
 
-        let mut filename = format!("{}/loss-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
+        let mut filename = format!("{}/loss.csv", opts.output_dir);
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.packet_loss * 100.0 )?;
+        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.packet_loss * 100.0 )?;
 
-        let mut filename = format!("{}/throughput-{:0.0}hz.csv", opts.output_dir, (1000.0 / p.as_millis() as f32) );
+        let mut filename = format!("{}/throughput.csv", opts.output_dir);
         filename.make_ascii_lowercase();
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &p_results, |f| f.throughput )?;
-    }
+        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.throughput )?;
+
 
 
     Ok(())
@@ -218,22 +190,13 @@ fn flatten_subscribers(results: &[Results]) -> HashMap<usize, Vec<Results>> {
 }
 
 
-fn write_stats_by_period<F>(filename: &str, subscribers: &[usize], periods: &[Duration], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
-where
-    F: Fn(&Results) -> f64,
-{
+fn write_stats_by_period(filename: &str, subscribers: &[usize], periods: &[Duration], results: &HashMap<usize, Vec<Results>>) -> Result<(), anyhow::Error> {
 
     // Open writer for file
     let mut w = csv::Writer::from_path(filename)?;
 
     // Generate header
-    let mut header = vec![format!("subscribers")];
-    let mut p: Vec<_> = periods.iter().map(|v| {
-        format!("{}", 1.0e3 / v.as_millis() as f64)
-    }).collect();
-    header.append(&mut p);
-
-
+    let header = vec!["subscribers", "period", "cpu", "memory", "latency", "packet loss", "throughput"];
     info!("Header: {:?}", header);
     w.serialize(&header)?;
 
@@ -242,18 +205,25 @@ where
 
         // Fetch the matching result row for a given number of subscribers
         if let Some(r) = results.get(n) {
-            let mut row = vec![Some(*n as f64)];
-
             for p in periods {
+                // Select result for each period
                 let v = r.iter()
                     .find(|f| f.test.publish_period == *p)
-                    .map(|f| filter(f) );
-                row.push(v);
+                    .unwrap();
+
+                let row = vec![
+                    format!("{n:<4}"),
+                    format!("{:>8.02}", 1.0e3 / p.as_millis() as f64),
+                    format!("{:>8.02}", v.cpu_percent.mean),
+                    format!("{:>8.02}", v.mem_percent.mean),
+                    format!("{:>8.02}", v.latency.mean / 1e3),
+                    format!("{:>8.02}", v.packet_loss * 100.0),
+                    format!("{:>8.02}", v.throughput),
+                ];
+
+                info!("Row: {:?}", row);
+                w.serialize(&row)?;
             }
-
-            info!("Row: {:?}", row);
-
-            w.serialize(&row)?;
         }
     }
 
@@ -262,7 +232,7 @@ where
     Ok(())
 }
 
-fn write_stats_by_mode<F>(filename: &str, subscribers: &[usize], modes: &[DriverMode], results: &HashMap<usize, Vec<Results>>, filter: F) -> Result<(), anyhow::Error> 
+fn write_stats_by_mode<F>(filename: &str, subscribers: &[usize], modes: &[DriverMode], periods: &[Duration], results: &[Results], filter: F) -> Result<(), anyhow::Error> 
 where
     F: Fn(&Results) -> f64,
 {
@@ -271,9 +241,9 @@ where
     let mut w = csv::Writer::from_path(filename)?;
 
     // Generate header
-    let mut header = vec![format!("subscribers")];
+    let mut header = vec!["subscribers".to_string(), "  period".to_string()];
     let mut p: Vec<_> = modes.iter().map(|v| {
-        format!("{}", v)
+        format!("{:>8}", v)
     }).collect();
     header.append(&mut p);
 
@@ -284,20 +254,32 @@ where
     // Write data for each row
     for n in subscribers {
 
-        // Fetch the matching result row for a given number of publishers
-        if let Some(r) = results.get(n) {
-            let mut row = vec![Some(*n as f64)];
+        for p in periods {
+            let mut row = vec![
+                format!("{n:<11}"),
+                format!("{:>8.02}", 1.0e3 / p.as_millis() as f64),
+            ];
 
+            // Find matching results
+            let r: Vec<_> = results.iter().filter(|r| r.test.num_subscribers == *n && r.test.publish_period == *p).collect();
+            if r.is_empty() {
+                continue;
+            }
+
+            // Iterate by mode
             for m in modes {
                 let v = r.iter()
-                    .find(|f| f.mode == *m)
-                    .map(|f| filter(f) );
+                    .find(|f| f.mode == *m )
+                    .map(|f| filter(f) )
+                    .map(|v| format!("{v:>8.02}") )
+                    .unwrap_or(format!("{:>8}", ""));
                 row.push(v);
             }
 
             info!("Row: {:?}", row);
 
             w.serialize(&row)?;
+
         }
     }
 
