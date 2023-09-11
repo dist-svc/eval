@@ -18,8 +18,6 @@ clients = [
     { publishers = 10, subscribers = 100 },
     { publishers = 10, subscribers = 150 },
     { publishers = 10, subscribers = 200 },
-#    { publishers = 150, subscribers = 150 },
-#    { publishers = 200, subscribers = 200},
 ]
 
 
@@ -46,11 +44,11 @@ port = 5684
 
 [[drivers]]
 mode = "dsf"
-container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-dsf"
-#container = "ghcr.io/dist-svc/dsf"
+#container = "ghcr.io/ryankurte/dsf-iot-eval/iot-perf-dsf"
+container = "ghcr.io/dist-svc/dsf"
 port = 10100
 env = [
-    "DSF_DB_FILE=/run/dsfd.db",
+    "DSF_DB_FILE=sqlite://:memory:?cache=shared",
     "DSF_SOCK=/var/dsfd.sock",
-#    "ASYNC_STD_THREAD_COUNT=1",
+    "LOG_LEVEL=warn",
 ]

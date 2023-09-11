@@ -1,7 +1,7 @@
 #![feature(async_closure)]
 #![recursion_limit="2048"]
 
-use std::{marker::PhantomData, time::{Duration}};
+use std::{marker::PhantomData, time::{Duration}, fmt::Debug};
 use std::marker::Unpin;
 
 use structopt::StructOpt;
@@ -12,7 +12,7 @@ use futures::future::{self, FutureExt};
 use futures::stream::StreamExt;
 use tokio::sync::broadcast;
 
-use log::{debug, info, warn, error};
+use log::{trace, debug, info, warn, error};
 use serde::{Serialize, Deserialize};
 use async_timer::oneshot::{Oneshot, Timer};
 
@@ -32,6 +32,12 @@ use remote::{ContainerStats, DockerMode};
 
 pub mod eval;
 use eval::Agent;
+
+mod results;
+pub use results::Results;
+
+mod helpers;
+use helpers::*;
 
 #[cfg(test)]
 mod enc;
@@ -187,20 +193,6 @@ impl std::fmt::Display for SocketKind {
 }
 
 
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Results {
-    pub mode: DriverMode,
-    pub test: TestConfig,
-
-    pub latency: Stats<f64>,
-    pub cpu_percent: Stats<f64>,
-    pub mem_percent: Stats<f64>,
-    pub packet_loss: f64,
-    pub throughput: f64,
-}
-
-
 pub async fn run_tests(options: &Options, config: &Config, output_dir: &str) -> Result<Vec<Results>, Error> {
     let mut results = vec![];
     let retries = options.retries;
@@ -336,7 +328,7 @@ pub async fn run_tests(options: &Options, config: &Config, output_dir: &str) -> 
 pub async fn try_run_test<D, C>(remote: &mut [Docker], targets: &[String], mode: &DriverMode, driver: &mut D, base: &Base, test: &TestConfig, retries: usize) -> Result<Results, Error>
 where
     D: Driver<Client = C> + 'static,
-    C: Client + Send + Unpin + 'static,
+    C: Client + Send + Unpin + Debug + 'static,
 {
     let mut i = 0;
     loop {
@@ -359,7 +351,7 @@ where
 pub async fn run_test<D, C>(remote: &mut [Docker], targets: &[String], mode: &DriverMode, driver: &mut D, base: &Base, test: &TestConfig) -> Result<Results, Error>
 where
     D: Driver<Client = C> + 'static,
-    C: Client + Send + Unpin + 'static,
+    C: Client + Debug + Send + Unpin + 'static,
 {
  
     info!("Initialising test: {:?}", test);
@@ -409,29 +401,37 @@ where
 
     debug!("Setting up publishers");
 
-    let pubs: Vec<_> = pub_clients.drain(..).enumerate().map(|(i, c)| {
-        let topic = topics[i].clone();
-        debug!("Publishing to topic: {}", topic);
-        Agent::new_publisher(c, start_tx.subscribe(), pub_done_tx.subscribe(),
-                session, topic, message_size, test.publish_period)
-    }).collect();
+    let publishers: Vec<_> = FutureWindow::new(
+        10,
+        pub_clients.drain(..).enumerate(),
+        |(i, c)| {
 
-    tokio::task::yield_now().await;
+            let topic = topics[i].clone();
+            let start_tx = start_tx.subscribe();
+            let done_tx = pub_done_tx.subscribe();
+            let period = test.publish_period;
 
-    let mut publishers: Vec<_> = future::try_join_all(pubs).await?;
+            Box::pin(async move {
+                Agent::new_publisher(c, start_tx, done_tx, session, topic, message_size, period).await
+            })
+    }).await;
+    let mut publishers = publishers.into_iter().collect::<Result<Vec<Agent<C>>, _>>()?;
 
     debug!("Setting up subscribers");
 
-    let subs: Vec<_> = sub_clients.drain(..).enumerate().map(|(i, c)| {
-        let topic = topics[i % test.num_publishers].clone();
-        debug!("Subscribe to topic: {}", topic);
-        Agent::new_subscriber(c, start_tx.subscribe(), sub_done_tx.subscribe(),
-                session, vec![topic])
-    }).collect();
+    let subscribers: Vec<_> = FutureWindow::new(
+        10,
+        sub_clients.drain(..).enumerate(),
+        |(i, c)| {
+            let topic = topics[i % test.num_publishers].clone();
+            let start_tx = start_tx.subscribe();
+            let done_tx = sub_done_tx.subscribe();
 
-    tokio::task::yield_now().await;
-
-    let mut subscribers: Vec<_> = future::try_join_all(subs).await?;
+            Box::pin(async move {
+                Agent::new_subscriber(c, start_tx, done_tx, session, vec![topic]).await
+            })
+    }).await;
+    let mut subscribers = subscribers.into_iter().collect::<Result<Vec<Agent<C>>, _>>()?;
 
 
     info!("Running test");
@@ -503,14 +503,14 @@ where
     let mut results_pub = futures::future::join_all(publishers.drain(..).map(|s| s.done() )).await;
     let mut results_sub = futures::future::join_all(subscribers.drain(..).map(|s| s.done() )).await;
 
-    
-    debug!("Subscriber stats: {:?}", results_sub);
+    trace!("Publisher stats: {:?}", results_pub);
+    trace!("Subscriber stats: {:?}", results_sub);
 
-    let cpu_percent = container_stats.iter().map(|s| s.stats().0 ).reduce(|acc, s| acc.merge(&s)).unwrap();
-    let mem_percent = container_stats.iter().map(|s| s.stats().1 ).reduce(|acc, s| acc.merge(&s)).unwrap();
+    let cpu_percent = container_stats.iter().map(|s| s.stats().0 ).reduce(|acc, s| acc.merge(&s)).unwrap_or_default();
+    let mem_percent = container_stats.iter().map(|s| s.stats().1 ).reduce(|acc, s| acc.merge(&s)).unwrap_or_default();
 
-    let sent = results_pub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap();
-    let latency = results_sub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap();
+    let sent = results_pub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap_or_default();
+    let latency = results_sub.drain(..).filter_map(|v| v.ok() ).reduce(|acc, s| acc.merge(&s)).unwrap_or_default();
     
     let packet_loss = 1f64 - ((latency.count as f64) / (sent.count as f64) * (test.num_publishers as f64) / (test.num_subscribers) as f64);
 
@@ -519,6 +519,7 @@ where
 
     info!("CPU stats: {:.2} %", cpu_percent);
     info!("MEM stats: {:.2} %", mem_percent);
+    info!("PUB stats: {:.2} us", sent);
     info!("SUB stats: {:.2} us", latency);
     info!("Packet loss: {:.2} (sent: {} received: {})", packet_loss, sent.count, latency.count);
     info!("Throughput: {:.2} messages/sec", throughput);
@@ -532,137 +533,6 @@ where
         packet_loss,
         throughput,
     })
-}
-
-use std::future::Future;
-use std::task::{Poll, Context};
-use std::pin::Pin;
-
-pub struct JoinAllWindowed<F, I> {
-    f: Vec<(F, Option<I>)>,
-    window: usize,
-}
-
-pub fn join_all_windowed<F, I>(mut f: Vec<F>, window: usize) -> JoinAllWindowed<F, I>
-where
-    F: core::future::Future<Output=I>
-{
-    JoinAllWindowed {
-        f: f.drain(..).map(|f| (f, None)).collect(),
-        window,
-    }
-}
-
-impl <F, I> Future for JoinAllWindowed<F, I>
-where 
-    F: Future<Output=I> + Unpin,
-    I: Unpin
-{
-    type Output = Vec<I>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut polled = 0;
-        for i in 0..self.f.len() {
-            // Skip already resolved futures
-            if self.f[i].1.is_some() {
-                continue;
-            }
-
-            // Poll unresolved futures
-            if let Poll::Ready(v) = self.f[i].0.poll_unpin(cx) {
-                // Store result
-                self.f[i].1 = Some(v);
-
-                // Decrease poll to keep the window moving
-                if polled > 0 {
-                    polled -= 1;
-                }
-
-                continue;
-            }
-
-            // Increment polled count and continue
-            polled += 1;
-            if polled >= self.window {
-                break;
-            }
-        }
-
-        let pending = self.f.iter().filter(|(_f, i)| i.is_none() ).count();
-        if pending > 0 {
-            Poll::Pending
-        } else {
-            Poll::Ready(self.f.drain(..).map(|(_f, i)| i.unwrap() ).collect())
-        }
-    }
-}
-
-
-pub struct TryJoinAllWindowed<F, I, E> {
-    f: Vec<(F, Option<I>)>,
-    window: usize,
-    _e: PhantomData<E>,
-}
-
-pub fn try_join_all_windowed<F, I, E>(mut f: Vec<F>, window: usize) -> TryJoinAllWindowed<F, I, E>
-where
-    F: core::future::Future<Output=Result<I, E>>
-{
-    TryJoinAllWindowed {
-        f: f.drain(..).map(|f| (f, None)).collect(),
-        window,
-        _e: PhantomData,
-    }
-}
-
-impl <F, I, E> Future for TryJoinAllWindowed<F, I, E>
-where 
-    F: Future<Output=Result<I, E>> + Unpin,
-    I: Unpin,
-    E: Unpin,
-{
-    type Output = Result<Vec<I>, E>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut polled = 0;
-        for i in 0..self.f.len() {
-            // Skip already resolved futures
-            if self.f[i].1.is_some() {
-                continue;
-            }
-
-            // Poll unresolved futures
-            match self.f[i].0.poll_unpin(cx) {
-
-                Poll::Ready(Ok(v)) => {
-                    // Store result
-                    self.f[i].1 = Some(v);
-
-                    // Decrease poll to keep the window moving
-                    if polled > 0 {
-                        polled -= 1;
-                    }
-
-                    continue;
-                },
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                _ => (),
-            }
-
-            // Increment polled count and continue
-            polled += 1;
-            if polled >= self.window {
-                break;
-            }
-        }
-
-        let pending = self.f.iter().filter(|(_f, i)| i.is_none() ).count();
-        if pending > 0 {
-            Poll::Pending
-        } else {
-            Poll::Ready(Ok(self.f.drain(..).map(|(_f, i)| i.unwrap() ).collect()))
-        }
-    }
 }
 
 

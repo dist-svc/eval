@@ -19,3 +19,5 @@ build/
 perf/servers/coap/coap-server
 perf/servers/coap/coap-server-openssl
 perf/servers/dsf/dsfd
+
+**/kubeconfig

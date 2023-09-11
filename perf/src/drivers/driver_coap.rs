@@ -53,6 +53,12 @@ pub struct CoapClient {
     subs: Vec<TokioObserve>,
 }
 
+impl std::fmt::Debug for CoapClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoapClient").field("id", &self.id).finish()
+    }
+}
+
 impl Stream for CoapClient {
     type Item = Vec<u8>;
 

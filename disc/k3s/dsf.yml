@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dsf-set
+  namespace: default
+spec:
+  serviceName: "dsf"
+  replicas: 50
+  selector:
+    matchLabels:
+      app: dsfd
+  template:
+    metadata:
+      labels:
+        app: dsfd
+    spec:
+      containers:
+      - name: dsf-peer
+        image: ghcr.io/dist-svc/dsf:latest
+        imagePullPolicy: Always
+        env:
+          - name: DSF_DB_FILE
+            value: sqlite:///var/dsfd/dsf.db?nolock=1
+          - name: DSF_HTTP
+            value: 0.0.0.0:10180
+          - name: LOG_LEVEL
+            value: info
+          - name: DHT_NODE_TIMEOUT
+            value: 3m
+          - name: DHT_UPDATE_PERIOD
+            value: 5m
+          - name: MOCK_RX_LATENCY
+            value: 50ms
+        ports:
+          - containerPort: 10100
+          - containerPort: 10180
+        volumeMounts:
+          - name: persistent-storage
+            mountPath: /var/dsfd
+            readOnly: false
+        resources:
+          requests:
+            memory: "40Mi"
+
+  volumeClaimTemplates:
+  - metadata:
+      name: persistent-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: smb
+      resources:
+        requests:
+          storage: 1Gi
+
+

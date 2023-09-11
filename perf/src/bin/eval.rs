@@ -20,7 +20,7 @@ pub struct Args {
     /// Output directory for results
     pub output_dir: String,
 
-    #[structopt(long, default_value = "trace")]
+    #[structopt(long, default_value = "info")]
     /// Configure app logging levels (warn, info, debug, trace)
     pub log_level: LevelFilter,
 }
@@ -34,6 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_config = simplelog::ConfigBuilder::new()
         .add_filter_ignore_str("hyper")
         .add_filter_ignore_str("bollard")
+        .add_filter_ignore_str("dsf_core")
         .build();
 
     if let Err(_e) = TermLogger::init(opts.log_level, log_config.clone(), TerminalMode::Mixed) {

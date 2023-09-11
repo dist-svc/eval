@@ -116,6 +116,12 @@ pub struct MqttClient {
     _handle: JoinHandle<()>,
 }
 
+impl std::fmt::Debug for MqttClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MqttClient").field("id", &self.id).finish()
+    }
+}
+
 unsafe impl Send for MqttClient {}
 
 impl Stream  for MqttClient {

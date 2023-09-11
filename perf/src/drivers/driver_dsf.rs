@@ -54,6 +54,8 @@ const DSF_TIMEOUT: Duration = Duration::from_secs(10);
 /// Enable symmetric crypto
 const SYMMETRIC_EN: bool = true;
 
+const USE_DELEGATION: bool = true;
+
 pub struct DsfClient {
     pub index: usize,
     req_id: u16,
@@ -69,6 +71,12 @@ pub struct DsfClient {
 
     udp_handle: JoinHandle<Result<(), Error>>,
     exit_tx: Sender<()>,
+}
+
+impl std::fmt::Debug for DsfClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DsfClient").field("id", &self.index).finish()
+    }
 }
 
 struct Req {
@@ -121,7 +129,7 @@ impl DsfClient {
                         let (req_id, address, op, resp_ch) = match outgoing {
                             Some(v) => v,
                             None => {
-                                error!("Outgoing channel closed");
+                                debug!("Outgoing channel closed");
                                 return Err(Error::Unknown)
                             }
                         };
@@ -137,12 +145,29 @@ impl DsfClient {
                                 req.common.public_key = svc_keys.pub_key.clone();
                                 req
                             },
-                            Op::Publish(data) => {
+                            Op::Publish(data) if !USE_DELEGATION => {
                                 let opts = DataOptions{body: Some(data.as_ref()), ..Default::default()};
                                 let (_n, c) = svc.publish_data_buff(opts).unwrap();
                                 let kind = net::RequestBody::PushData(svc.id(), vec![c.to_owned()]);
                                 NetRequest::new(svc.id(), req_id, kind, Flags::CONSTRAINED)
                             },
+                            Op::Publish(data) if USE_DELEGATION => {
+                                // Create data object
+                                let opts = DataOptions{body: Some(data.as_ref()), ..Default::default()};
+                                let (_n, c) = svc.publish_data_buff(opts).unwrap();
+                                
+                                // Add RX handle
+                                rx_handles.insert(c.header().index() as u16, resp_ch);
+
+                                // Send data object
+                                if let Err(e) = sock.send_to(c.raw(), &address).await {
+                                    error!("UDP send2 error: {:?}", e);
+                                    return Err(Error::Unknown);
+                                }
+
+                               continue
+                            },
+                            _ => unreachable!(),
                         };
 
                         debug!("Sending request: {:?}", req);
@@ -206,6 +231,18 @@ impl DsfClient {
                         // Store peer ID for later
                         if peer_id.is_none() {
                             peer_id = Some(base.id().clone());
+                        }
+
+                        // Handle raw data objects
+                        if base.header().kind().is_data() {
+                            let data = base.body_raw().to_vec();
+                            debug!("received data push: {:02x?}", data);
+
+                            if let Err(e) = msg_in_tx.send(data) {
+                                error!("Message RX send error: {:?}", e);
+                                //break Err(Error::Unknown);
+                                continue;
+                            }
                         }
                         
                         // Convert to network message
@@ -295,7 +332,6 @@ impl DsfClient {
                             },
                             _ => (),
                         }
-                      
                     },
                 )
             }

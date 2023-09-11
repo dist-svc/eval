@@ -113,6 +113,12 @@ pub struct LoopClient {
     ctl_tx: Sender<Ctl>,
 }
 
+impl std::fmt::Debug for LoopClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoopClient").field("id", &self.id).finish()
+    }
+}
+
 impl Stream  for LoopClient {
     type Item = Vec<u8>;
 

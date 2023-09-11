@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dsf-isolate
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: dsfd
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 192.168.8.0/21
+    ports:
+    - protocol: UDP
+      port: 10100
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 192.168.8.0/21
+    ports:
+    - protocol: UDP
+      port: 10100
+
