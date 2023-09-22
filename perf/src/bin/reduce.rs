@@ -112,29 +112,27 @@ fn main() -> Result<(), anyhow::Error>{
         write_stats_by_period(&filename, &subscribers, &periods, &m_results)?;
     }
 
-        info!("Preparing results by type");
+    info!("Preparing results by type");
 
-        let mut filename = format!("{}/cpu.csv", opts.output_dir);
-        filename.make_ascii_lowercase();
+    let mut filename = format!("{}/cpu.csv", opts.output_dir);
+    filename.make_ascii_lowercase();
+    write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.cpu_percent.mean )?;
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.cpu_percent.mean )?;
+    let mut filename = format!("{}/mem.csv", opts.output_dir);
+    filename.make_ascii_lowercase();
+    write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.mem_percent.mean )?;
 
-        let mut filename = format!("{}/lat.csv", opts.output_dir);
-        filename.make_ascii_lowercase();
+    let mut filename = format!("{}/lat.csv", opts.output_dir);
+    filename.make_ascii_lowercase();
+    write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.latency.mean / 1e3 )?;
 
-        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.latency.mean / 1e3 )?;
+    let mut filename = format!("{}/loss.csv", opts.output_dir);
+    filename.make_ascii_lowercase();
+    write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.packet_loss * 100.0 )?;
 
-        let mut filename = format!("{}/loss.csv", opts.output_dir);
-        filename.make_ascii_lowercase();
-
-        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.packet_loss * 100.0 )?;
-
-        let mut filename = format!("{}/throughput.csv", opts.output_dir);
-        filename.make_ascii_lowercase();
-
-        write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.throughput )?;
-
-
+    let mut filename = format!("{}/throughput.csv", opts.output_dir);
+    filename.make_ascii_lowercase();
+    write_stats_by_mode(&filename, &subscribers, &modes, &periods, &results, |f| f.throughput )?;
 
     Ok(())
 }
