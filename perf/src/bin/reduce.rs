@@ -27,9 +27,9 @@ pub enum Mode {
 #[derive(PartialEq, Clone, Debug, StructOpt)]
 pub struct Args {
     
-    #[structopt(long, default_value = "results")]
-    /// Test results file for processing
-    pub results_dir: String,
+    #[structopt(short, long)]
+    /// Test results file(s) for processing
+    pub results: Vec<String>,
 
     #[structopt(long, default_value = "outputs")]
     /// Output directory for re-structured data
@@ -60,18 +60,13 @@ fn main() -> Result<(), anyhow::Error>{
     }
 
     // Load test result data
-    info!("Reading test data from: {}", opts.results_dir);
+    info!("Reading {} result files", opts.results.len());
     let mut results = vec![];
 
-    for e in std::fs::read_dir(opts.results_dir)? {
-        let p = e?.path();
-        if !p.is_file() {
-            continue;
-        }
+    for f in &opts.results {
+        info!("Load file: {f}");
 
-        info!("Load file: {}", p.display());
-
-        let d = std::fs::read_to_string(&p)?;
+        let d = std::fs::read_to_string(&f)?;
         let mut r: Vec<Results> = serde_json::from_str(&d)?;
 
         results.append(&mut r);

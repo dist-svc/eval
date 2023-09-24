@@ -43,7 +43,6 @@ mode = "dsf"
 container = "ghcr.io/dist-svc/dsf"
 port = 10100
 env = [
-#    "DSF_DB_FILE=/run/dsfd.db",
     "DSF_DB_FILE=sqlite://:memory:?cache=shared",
     "DSF_SOCK=/var/dsfd.sock",
     "LOG_LEVEL=warn",

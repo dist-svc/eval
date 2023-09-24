@@ -1,4 +1,5 @@
 #![feature(async_closure)]
+#![feature(trivial_bounds)]
 #![recursion_limit="2048"]
 
 use std::{marker::PhantomData, time::{Duration}, fmt::Debug};
@@ -33,8 +34,13 @@ use remote::{ContainerStats, DockerMode};
 pub mod eval;
 use eval::Agent;
 
+mod config;
+pub use config::TestConfig;
+
 mod results;
 pub use results::Results;
+
+mod schema;
 
 mod helpers;
 use helpers::*;
@@ -145,37 +151,6 @@ impl DriverMode {
 }
 
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct TestConfig {
-    /// Number of client subscribers
-    pub num_subscribers: usize,
-
-    /// Number of client publishers
-    pub num_publishers: usize,
-
-    /// Size of published messages
-    pub message_size: usize,
-
-    /// Period between published messages
-    #[serde(with = "humantime_serde")]
-    pub publish_period: Duration,
-
-    /// Disable test
-    #[serde(default, skip_serializing)]
-    pub disabled: bool,
-}
-
-impl Default for TestConfig {
-    fn default() -> Self {
-        Self {
-            num_subscribers: 10,
-            num_publishers: 10,
-            message_size: 32,
-            publish_period: Duration::from_secs(1),
-            disabled: false,
-        }
-    }
-}
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum SocketKind {
@@ -196,6 +171,10 @@ impl std::fmt::Display for SocketKind {
 pub async fn run_tests(options: &Options, config: &Config, output_dir: &str) -> Result<Vec<Results>, Error> {
     let mut results = vec![];
     let retries = options.retries;
+
+    // Setup result file name
+    let dt: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+    let result_file = format!("{output_dir}/results-{}.json", dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
 
     // Connect to docker target if enabled
     let mut r = vec![];
@@ -310,16 +289,14 @@ pub async fn run_tests(options: &Options, config: &Config, output_dir: &str) -> 
 
         // Write results to file
         
-        let n = format!("{}/results-{}.json", output_dir, opts.mode);
-        info!("Writing results to file: '{}'", n);
+        info!("Updating result file: '{result_file}'");
 
         let r = serde_json::to_string(&results)?;
-        let o = std::path::Path::new(&n);
+        let o = std::path::Path::new(&result_file);
         if let Some(p) = o.parent() {
             let _ = std::fs::create_dir(p);
         }
         std::fs::write(o, r)?;
-
     }
 
     Ok(results)

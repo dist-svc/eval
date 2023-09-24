@@ -2,7 +2,7 @@
 use structopt::StructOpt;
 
 use simplelog::{LevelFilter, SimpleLogger, TermLogger, TerminalMode};
-use log::{info, error};
+use log::{debug, info, error};
 
 use iot_perf::{Options, Config, run_tests};
 
@@ -50,7 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run tests   
     match run_tests(&opts.options, &config, &opts.output_dir).await {
         Ok(r) => {
-            info!("Results: {:?}", r);
+            info!("Tests complete, see {} for results", opts.output_dir);
+            debug!("Results: {:?}", r);
             r
         },
         Err(e) => {

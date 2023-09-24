@@ -40,14 +40,17 @@ strum = "0.20.0"
 cbor = "0.4.1"
 serde_cbor = "0.11.1"
 console-subscriber = "0.1.2"
+diesel = { version = "2.1.1", features = ["sqlite", "chrono"] }
+libsqlite3-sys = { version = "0.26.0", features = ["bundled"] }
+chrono = "*"
 
 tokio = { version = "1.16.1", features = [ "full", "macros" ] }
 futures = { version = "0.3.21", features = ["compat"] }
 
 dsf-core = "0.3.0"
-dsf-rpc = "0.3.0"
+dsf-rpc = { version = "0.3.0", default_features = false, features = [ "std" ] }
 dsf-client = "0.3.0"
-dsf-iot = "0.1.0"
+dsf-iot = { version = "0.1.0", default_features = false, features = [ "std" ] }
 
 
 [dependencies.futures_v1]

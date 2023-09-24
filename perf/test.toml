@@ -13,11 +13,12 @@ frequency = [ 10 ]
 message_len = 32
 
 clients = [
-    #{ publishers = 10, subscribers = 10 },
     { publishers = 10, subscribers = 50 },
     { publishers = 10, subscribers = 100 },
     { publishers = 10, subscribers = 150 },
     { publishers = 10, subscribers = 200 },
+    { publishers = 10, subscribers = 250 },
+    { publishers = 10, subscribers = 300 },
 ]
 
 
