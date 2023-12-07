@@ -25,6 +25,7 @@ rolling-stats = { version = "0.7.0", features = [ "serde" ] }
 chrono = "0.4.24"
 futures = "*"
 async-trait = "*"
+windowed-futures = "0.1.0"
 
 sha2 = { version = "0.8.1", default_features = false }
 rand = "*"

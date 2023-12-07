@@ -1,32 +1,47 @@
-
 use std::collections::HashMap;
 
 use async_trait::async_trait;
 use clap::Parser;
-use futures::{StreamExt};
-use tokio::{sync::{oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender}, mpsc::{unbounded_channel, channel, UnboundedReceiver, UnboundedSender}}, select};
-use tracing::{trace, debug, info, warn, error};
-use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
+use futures::StreamExt;
 use rand::random;
+use tokio::{
+    select,
+    sync::{
+        mpsc::{channel, unbounded_channel, UnboundedReceiver, UnboundedSender},
+        oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
+    },
+};
+use tracing::{debug, error, info, trace, warn};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
 use dsf_core::prelude::Id;
-use kad::{common::{Entry, Request, Response, Error, DatabaseId}, table::{KNodeTable, NodeTable}, dht::{Dht, DhtHandle, RequestSender, RequestReceiver, Net, Connect, SearchOptions}, prelude::DhtConfig, store::HashMapStore};
+use kad::{
+    common::{DatabaseId, Entry, Error, Request, Response},
+    dht::{Connect, Dht, DhtHandle, Net, RequestReceiver, RequestSender, SearchOptions, Base, Store as _, Search as _},
+    prelude::DhtConfig,
+    store::HashMapStore,
+    table::{KNodeTable, NodeTable},
+};
+
+use disc::{NetMux, NetMuxHandle};
 
 #[derive(Clone, PartialEq, Debug, Parser)]
 pub struct Args {
-
     #[clap(long, default_value_t = 4)]
     pub peers: usize,
+
+    #[clap(long, default_value_t = 4)]
+    pub entries: usize,
 
     #[clap(long, default_value_t = 16)]
     pub k: usize,
 
-    #[clap(long, default_value="info")]
+    #[clap(long, default_value = "info")]
     log_level: LevelFilter,
 }
 
 type Info = ();
-type Data = ();
+type Data = u32;
 
 struct MockPeer {
     dht_handle: DhtHandle<Id, Info, Data>,
@@ -34,8 +49,16 @@ struct MockPeer {
 }
 
 impl MockPeer {
-    pub fn new(id: Id, config: DhtConfig, mut rx: UnboundedReceiver<(Entry<Id, Info>, Request<Id, Data>, OneshotSender<Response<Id, Info, Data>>)>, tx: NetMuxHandle) -> Self {
-
+    pub fn new(
+        id: Id,
+        config: DhtConfig,
+        mut rx: UnboundedReceiver<(
+            Entry<Id, Info>,
+            Request<Id, Data>,
+            OneshotSender<Response<Id, Info, Data>>,
+        )>,
+        tx: NetMuxHandle,
+    ) -> Self {
         // Setup exit handler
         let (exit_tx, exit_rx) = oneshot::channel();
 
@@ -52,7 +75,7 @@ impl MockPeer {
             debug!("Start DHT task");
 
             loop {
-                tokio::select!{
+                tokio::select! {
                     Some((peer, req, resp_tx)) = rx.recv() => {
                         match dht.handle_req(&peer, &req) {
                             Ok(resp) => {
@@ -71,7 +94,10 @@ impl MockPeer {
             debug!("Exit DHT task");
         });
 
-        Self{dht_handle, exit_tx}
+        Self {
+            dht_handle,
+            exit_tx,
+        }
     }
 
     fn exit(self) {
@@ -79,115 +105,6 @@ impl MockPeer {
     }
 }
 
-#[derive(Clone)]
-struct NetMux {
-    mux_ctl: UnboundedSender<MuxCtl>
-}
-
-#[derive(Debug)]
-enum MuxCtl {
-    Register(Id, UnboundedSender<(Entry<Id, Info>, Request<Id, Data>, OneshotSender<Response<Id, Info, Data>>)>),
-    Unregister(Id),
-    Request(Id, Entry<Id, Info>, Request<Id, Data>, OneshotSender<Response<Id, Info, Data>>),
-    Exit,
-}
-
-impl NetMux {
-    pub fn new() -> Self {
-
-        let (ctl_tx, mut ctl_rx) = unbounded_channel::<MuxCtl>();
-
-        // Start mux task
-        tokio::task::spawn(async move {
-            let mut peers = HashMap::new();
-
-            loop {
-                select!{
-                    Some(ctl) = ctl_rx.recv() => {
-                        match ctl {
-                            MuxCtl::Register(id, req_tx) => {
-                                debug!("Register peer: {id:?}");
-                                peers.insert(id, req_tx);
-                            },
-                            MuxCtl::Unregister(id) => {
-                                debug!("Deregister peer: {id:?}");
-                                peers.remove(&id);
-                            }
-                            MuxCtl::Request(id, from, req, resp_tx) => {
-                                trace!("Mux from: {from:?} to: {id:?} req: {req:?}");
-                                match peers.get(&id) {
-                                    Some(p) => {
-                                        trace!("Mux resp: {p:?}");
-                                        p.send((from, req, resp_tx)).unwrap()
-                                    },
-                                    None => {
-                                        warn!("Attempt to send to unregistered peer");
-                                    },
-                                }
-                            }
-                            MuxCtl::Exit => break,
-                        }
-                    }
-                }
-            }
-        });
-
-        // Return mux handle
-        Self{ mux_ctl: ctl_tx }
-    }
-
-    pub fn handle(&self, id: &Id, peer_tx: UnboundedSender<(Entry<Id, Info>, Request<Id, Data>, OneshotSender<Response<Id, Info, Data>>)>) -> NetMuxHandle {
-        // Register handle
-        self.mux_ctl.send(MuxCtl::Register(id.clone(), peer_tx)).unwrap();
-        // Return handle
-        NetMuxHandle { id: id.clone(), mux_ctl: self.mux_ctl.clone() }
-    }
-
-    pub fn exit(self) {
-        let _ = self.mux_ctl.send(MuxCtl::Exit);
-    }
-}
-
-#[derive(Clone)]
-struct NetMuxHandle {
-    id: Id,
-    mux_ctl: UnboundedSender<MuxCtl>,
-}
-
-impl core::fmt::Debug for NetMuxHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NetMuxHandle").field("id", &self.id).finish()
-    }
-}
-
-#[async_trait]
-impl Net<Id, Info, Data> for NetMuxHandle {
-    async fn request(
-        &self,
-        peers: Vec<Entry<Id, Info>>,
-        req: Request<Id, Data>,
-    ) -> Result<HashMap<Id, Response<Id, Info, Data>>, Error> {
-
-        debug!("Request: {req:?} to peers: {peers:?}");
-
-        let mut resps = HashMap::new();
-
-        // Issue request to each peer
-        for p in peers {
-            // Send request via mux
-            let (resp_tx, resp_rx) = oneshot::channel();
-            self.mux_ctl.send(MuxCtl::Request(p.id().clone(), Entry::new(self.id.clone(), ()), req.clone(), resp_tx)).unwrap();
-
-            // Await response
-            if let Ok(resp) = resp_rx.await {
-                resps.insert(p.id().clone(), resp);
-            }
-        }
-
-        // Return response collection
-        Ok(resps)
-    }
-}
 
 #[tokio::main]
 async fn main() {
@@ -201,12 +118,17 @@ async fn main() {
         .with_max_level(args.log_level)
         .with_env_filter(filter)
         .try_init();
-    
+
     debug!("args: {args:?}");
 
     let net_mux = NetMux::new();
 
-    let config = DhtConfig::default();
+    let config = DhtConfig{
+        max_recursion: 16,
+        ..Default::default()
+    };
+
+    info!("DHT config: {config:?}");
 
     // Setup mock peers
     info!("Creating {} peers", args.peers);
@@ -220,23 +142,60 @@ async fn main() {
         let p = MockPeer::new(id.clone(), config.clone(), peer_rx, net_handle);
 
         peers.push((id, p));
+
     }
+
+    let opts = SearchOptions {
+        concurrency: config.concurrency,
+        depth: config.max_recursion,
+    };
+
 
     info!("Bootstrapping {} peers", peers.len());
     let bootstrap = peers[0].0.clone();
 
     for (_id, p) in &mut peers {
-        let opts = SearchOptions {
-            concurrency: config.concurrency,
-            depth: config.max_recursion,
-        };
-
-        p.dht_handle.connect(vec![Entry::new(bootstrap.clone(), ())], opts.clone()).await.unwrap();
+        p.dht_handle
+            .connect(vec![Entry::new(bootstrap.clone(), ())], opts.clone())
+            .await
+            .unwrap();
     }
 
-    info!("Bootstrap complete");
-
     // TODO: run tests
+
+    info!("Store {} records", args.entries);
+    // Setup entries
+    let mut entries = vec![];
+    for i in 0..args.entries {
+        let id = Id::from(random::<[u8; 32]>());
+        let value = i;
+
+        // Write entries to DHT
+        peers[0].1.dht_handle.store(id.clone(), vec![value as u32], opts.clone()).await.unwrap();
+
+        entries.push((id, value));
+    }
+
+    info!("Search for records");
+
+    // Perform searches and collect statistics
+    let mut hop_stats = rolling_stats::Stats::new();
+    let mut errors = 0;
+
+    for (_, p) in &peers {
+        for (e, _) in &entries {
+
+            let (v, info) = p.dht_handle.search(e.clone(), opts.clone()).await.unwrap();
+            if v.len() == 0 {
+                errors += 1;
+                error!("Failed to retrieve value");
+            }
+
+            hop_stats.update(info.depth as f32);
+        }
+    }
+
+    info!("Search errors: {errors}, hop stats: {hop_stats:?}");
 
     // Shutdown peers
     for (_id, p) in peers.drain(..) {
@@ -245,5 +204,4 @@ async fn main() {
 
     // Shutdown mux
     net_mux.exit();
-
 }
