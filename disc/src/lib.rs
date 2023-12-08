@@ -24,6 +24,9 @@ use kad::{
     table::{KNodeTable, NodeTable},
 };
 
+mod range;
+pub use range::{IntRange, IntRangeIter};
+
 pub type Info = ();
 pub type Data = u32;
 
@@ -143,10 +146,8 @@ impl Net<Id, Info, Data> for NetMuxHandle {
     ) -> Result<HashMap<Id, Response<Id, Info, Data>>, Error> {
         debug!("Request: {req:?} to peers: {peers:?}");
 
-        let mut resps = vec![];
-
         // Issue request to each peer
-        // TODO: parallelise this..?
+        let mut resps = vec![];
         for p in peers {
             let target_id = p.id().clone();
             // Send request via mux
@@ -160,15 +161,79 @@ impl Net<Id, Info, Data> for NetMuxHandle {
                 ))
                 .unwrap();
 
+            // Collect response futures
             resps.push(async move {
                 resp_rx.await.map(|v| (target_id, v) )
             });
         }
 
-        // Await responses
+        // Await response futures
         let mut resps = join_all(resps).await;
 
         // Return response collection
         Ok(HashMap::from_iter(resps.drain(..).filter_map(|r| r.ok() )))
+    }
+}
+
+
+pub struct MockPeer {
+    pub dht_handle: DhtHandle<Id, Info, Data>,
+    exit_tx: OneshotSender<()>,
+}
+
+impl MockPeer {
+    pub fn new(
+        id: Id,
+        config: DhtConfig,
+        mut rx: UnboundedReceiver<(
+            Entry<Id, Info>,
+            Request<Id, Data>,
+            OneshotSender<Response<Id, Info, Data>>,
+        )>,
+        tx: NetMuxHandle,
+    ) -> Self {
+        // Setup exit handler
+        let (exit_tx, exit_rx) = oneshot::channel();
+
+        // Setup DHT
+        let table = KNodeTable::new(id.clone(), config.k, id.max_bits());
+        let store = HashMapStore::new();
+        let mut dht = Dht::custom(id, config, tx, table, store);
+        let dht_handle = dht.get_handle();
+
+        // Start listener task
+        tokio::task::spawn(async move {
+            tokio::pin!(exit_rx);
+
+            debug!("Start DHT task");
+
+            loop {
+                tokio::select! {
+                    Some((peer, req, resp_tx)) = rx.recv() => {
+                        match dht.handle_req(&peer, &req) {
+                            Ok(resp) => {
+                                resp_tx.send(resp).unwrap()
+                            },
+                            Err(e) => {
+                                error!("Failed to handle request: {e:?}")
+                            }
+                        }
+                    }
+                    _ = (&mut dht) => (),
+                    _ = (&mut exit_rx) => break,
+                }
+            }
+
+            debug!("Exit DHT task");
+        });
+
+        Self {
+            dht_handle,
+            exit_tx,
+        }
+    }
+
+    pub fn exit(self) {
+        let _ = self.exit_tx.send(());
     }
 }

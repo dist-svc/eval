@@ -32,8 +32,8 @@ rand = "*"
 
 [[bin]]
 name = "disc-eval"
-path = "src/main.rs"
+path = "src/bin/dsr.rs"
 
 [[bin]]
 name = "kad-eval"
-path = "src/kad.rs"
+path = "src/bin/kad.rs"
