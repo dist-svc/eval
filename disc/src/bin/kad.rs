@@ -14,7 +14,7 @@ use dsf_core::prelude::Id;
 use kad::{
     common::Entry,
     dht::{Connect, SearchOptions, Store as _, Search as _},
-    prelude::DhtConfig,
+    prelude::DhtConfig, table::NodeTable,
 };
 
 use disc::{NetMux, MockPeer, IntRange};
@@ -36,6 +36,9 @@ pub struct Args {
     #[clap(long, default_value_t = 10)]
     pub entries: usize,
 
+    #[clap(long, default_value = "dht-results.json")]
+    pub output: String,
+
     #[clap(long, default_value = "info")]
     log_level: LevelFilter,
 }
@@ -49,14 +52,20 @@ struct TestResult {
 
     pub k: usize,
 
-    pub hops: Stats<f32>,
+    pub hops_min: f32,
+
+    pub hops_max: f32,
+
+    pub hops_mean: f32,
+
+    pub entries_mean: f32,
 
     pub errors: usize,
 
     pub duration_s: usize,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     // Parse command line arguments
     let args = Args::parse();
@@ -94,6 +103,24 @@ async fn main() {
     }
 
     info!("Results: {results:?}");
+
+    let s = if args.output.contains("json") {
+        serde_json::to_vec_pretty(&results).unwrap()
+
+    } else if args.output.contains("csv") {
+        let mut w = csv::WriterBuilder::new().has_headers(true).from_writer(vec![]);
+        for r in &results {
+            w.serialize(r).unwrap();
+            w.flush().unwrap();
+        }
+        w.into_inner().unwrap()
+
+    } else {
+        error!("Output format not supported {}", args.output);
+        return;
+    };
+
+    std::fs::write(&args.output, &s).unwrap();
 
 }
 
@@ -170,9 +197,14 @@ async fn run_test(num_peers: usize, num_entries: usize, config: DhtConfig) -> Te
 
     info!("Search errors: {errors}, hop stats: {hop_stats:?}");
 
-    // Shutdown peers
+    // Shutdown peers and collect table stats
+    let mut table_stats = Stats::new();
+
     for (_id, p) in peers.drain(..) {
-        p.exit();
+        let dht = p.exit().await;
+
+        let n = dht.nodetable().entries().count();
+        table_stats.update(n as f32);
     }
 
     // Shutdown mux
@@ -183,7 +215,10 @@ async fn run_test(num_peers: usize, num_entries: usize, config: DhtConfig) -> Te
         alpha: config.concurrency,
         k: config.k,
         errors,
-        hops: hop_stats,
+        hops_min: hop_stats.min,
+        hops_max: hop_stats.max,
+        hops_mean: hop_stats.mean,
+        entries_mean: table_stats.mean,
         duration_s: start.elapsed().unwrap().as_secs() as usize ,
     }
 }

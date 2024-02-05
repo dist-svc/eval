@@ -1,0 +1,208 @@
+
+\documentclass{article}
+
+\usepackage{geometry}
+\geometry{
+ a4paper,
+ margin=1cm,
+}
+
+\usepackage{xargs}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\usepackage{tikz}
+\usepackage{tabularx}
+
+\pgfplotsset{compat=1.16}
+
+
+\begin{filecontents*}{entries.csv}
+peers, 4, 8, 16
+250, 26.45733567, 46.565335, 77.59199333
+500, 29.83733433, 54.03932633, 93.859998
+750, 31.999089, 58.520888, 102.9941987
+1000, 33.39897667, 62.23333767, 108.1683133
+1250, 34.59254267, 64.48618167, 114.6191667
+1500, 34.963314, 66.60841, 117.754472
+1750, 35.774095, 68.45061667, 122.235225
+2000, 35.254484, 69.59050333, 125.4043633    
+\end{filecontents*}
+
+\pgfplotstableread[col sep=comma, header=has colnames]{./entries.csv}\dhtentries
+
+
+% Flip table to get rows for each line
+%\pgfplotstabletranspose[]{\flippedtable}{\datatable}
+
+%\pgfplotsset{every tick label/.append style={font=\LARGE}}
+
+
+
+
+\pagestyle{empty}
+\begin{document}
+
+\begin{tikzpicture}[]
+    \begin{axis}[
+        xlabel={Network Size (peers)},
+        ylabel={Peer Routing Entries},
+        xlabel shift = 0.2cm,
+        ylabel shift = 0.2cm,
+        table/col sep=comma,
+        legend style={at={(0.05,0.95)},anchor=north west,minimum width=3.0cm},
+        ymin = 0,
+        ymax = 150,
+        %ybar=2pt,
+        %bar width=8pt,
+        xmin = 0,
+        xmax = 2200,
+        xtick distance = 500,
+        %xticklabels from table={\datatable}{count},
+        ymajorgrids=true,
+        %ytick distance=200,
+        grid style=dashed,
+        %enlarge y limits=0.15,
+        %enlarge x limits=0.15,
+        width=0.9\linewidth,
+        height=10cm
+    ]
+    %\addlegendimage{empty legend}
+    %\addlegendentry{\hspace{-.6cm}\textbf{$k$}}
+
+    \addplot[] table [x={peers}, y={4}]{\dhtentries};
+    \addlegendentryexpanded{$k = 4$}%
+
+    \addplot[] table [x={peers}, y={8}]{\dhtentries};
+    \addlegendentryexpanded{$k = 8$}%
+
+    \addplot[] table [x={peers}, y={16}]{\dhtentries};
+    \addlegendentryexpanded{$k = 16$}%
+
+    \end{axis}
+\end{tikzpicture}%
+
+
+% alpha = 16
+\begin{filecontents*}{hops-by-k-a16.csv}
+peers, 4, 8, 16
+250, 5.5491967, 4.977198, 4.4199996
+500, 6.963612, 5.8665977, 5.222399
+750, 6.514538, 6.1331964, 5.903065
+1000, 7.4570045, 6.676801, 5.840981
+1250, 7.3477645, 7.188382, 6.079607
+1500, 7.448407, 7.498051, 6.3887343
+1750, 7.6647224, 7.536161, 6.4748516
+2000, 7.76014, 7.474789, 6.8348985
+\end{filecontents*}
+
+% alpha = 8
+\begin{filecontents*}{hops-by-k-a8.csv}
+    peers, 4, 8, 16
+    250, 5.3000035, 5.105204, 4.528802
+    500, 6.1682005, 5.8200097, 4.8149986
+    750, 6.804677, 6.691857, 5.4205284
+    1000, 7.298914, 7.1556034, 5.639508
+    1250, 7.250485, 7.1187124, 6.2874436
+    1500, 7.586253, 7.26813, 6.548132
+    1750, 7.47639, 7.323939, 6.667165
+    2000, 7.8668914, 7.4167647, 6.6721597
+    \end{filecontents*}
+
+\pgfplotstableread[col sep=comma, header=has colnames]{./hops-by-k-a8.csv}\hopsk
+    
+\begin{tikzpicture}[]
+    \begin{axis}[
+        xlabel={Network Size (peers)},
+        ylabel={Average Hops by k (alpha = 8)},
+        xlabel shift = 0.2cm,
+        ylabel shift = 0.2cm,
+        table/col sep=comma,
+        legend style={at={(0.05,0.95)},anchor=north west,minimum width=3.0cm},
+        ymin = 0,
+        ymax = 10,
+        %ybar=2pt,
+        %bar width=8pt,
+        xmin = 0,
+        xmax = 2200,
+        xtick distance = 500,
+        %xticklabels from table={\datatable}{count},
+        ymajorgrids=true,
+        %ytick distance=200,
+        grid style=dashed,
+        %enlarge y limits=0.15,
+        %enlarge x limits=0.15,
+        width=0.9\linewidth,
+        height=10cm
+    ]
+    %\addlegendimage{empty legend}
+    %\addlegendentry{\hspace{-.6cm}\textbf{$k$}}
+
+    \addplot[] table [x={peers}, y={4}]{\hopsk};
+    \addlegendentryexpanded{$k = 4$}%
+
+    \addplot[] table [x={peers}, y={8}]{\hopsk};
+    \addlegendentryexpanded{$k = 8$}%
+
+    \addplot[] table [x={peers}, y={16}]{\hopsk};
+    \addlegendentryexpanded{$k = 16$}%
+
+    \end{axis}
+\end{tikzpicture}%
+
+% k = 8
+\begin{filecontents*}{hops-by-a.csv}
+peers, 4, 8, 16
+250, 5.1304, 5.1272025, 4.977198
+500, 5.718995, 6.010798, 5.8665977
+750, 6.209465, 6.1814785, 6.1331964
+1000, 6.80191, 6.735507, 6.676801
+1250, 7.289066, 7.015652, 7.188382
+1500, 7.196318, 6.946624, 7.498051
+1750, 7.6048636, 7.713542, 7.536161
+2000, 7.7600775, 7.573603, 7.474789    
+\end{filecontents*}
+
+\pgfplotstableread[col sep=comma, header=has colnames]{./hops-by-a.csv}\hopsa
+
+\begin{tikzpicture}[]
+    \begin{axis}[
+        xlabel={Network Size (peers)},
+        ylabel={Average Hops by alpha (k = 8)},
+        xlabel shift = 0.2cm,
+        ylabel shift = 0.2cm,
+        table/col sep=comma,
+        legend style={at={(0.05,0.95)},anchor=north west,minimum width=3.0cm},
+        ymin = 0,
+        ymax = 10,
+        %ybar=2pt,
+        %bar width=8pt,
+        xmin = 0,
+        xmax = 2200,
+        xtick distance = 500,
+        %xticklabels from table={\datatable}{count},
+        ymajorgrids=true,
+        %ytick distance=200,
+        grid style=dashed,
+        %enlarge y limits=0.15,
+        %enlarge x limits=0.15,
+        width=0.9\linewidth,
+        height=10cm
+    ]
+    %\addlegendimage{empty legend}
+    %\addlegendentry{\hspace{-.6cm}\textbf{$k$}}
+
+    \addplot[] table [x={peers}, y={4}]{\hopsa};
+    \addlegendentryexpanded{$a = 4$}%
+
+    \addplot[] table [x={peers}, y={8}]{\hopsa};
+    \addlegendentryexpanded{$a = 8$}%
+
+    \addplot[] table [x={peers}, y={16}]{\hopsa};
+    \addlegendentryexpanded{$a = 16$}%
+
+    \end{axis}
+\end{tikzpicture}%
+
+
+\end{document}

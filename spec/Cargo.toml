@@ -30,3 +30,8 @@ path = "src/cbor_util.rs"
 [[bin]]
 name = "dsf-util"
 path = "src/dsf_util.rs"
+
+
+[[bin]]
+name = "dsf-bench"
+path = "src/dsf_bench.rs"

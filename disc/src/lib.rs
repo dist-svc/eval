@@ -10,7 +10,7 @@ use tokio::{
     sync::{
         mpsc::{channel, unbounded_channel, UnboundedReceiver, UnboundedSender},
         oneshot::{self, Receiver as OneshotReceiver, Sender as OneshotSender},
-    },
+    }, task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
@@ -178,8 +178,10 @@ impl Net<Id, Info, Data> for NetMuxHandle {
 
 pub struct MockPeer {
     pub dht_handle: DhtHandle<Id, Info, Data>,
+    task_handle: JoinHandle<Dht<Id, (), u32, NetMuxHandle>>,
     exit_tx: OneshotSender<()>,
 }
+
 
 impl MockPeer {
     pub fn new(
@@ -202,7 +204,7 @@ impl MockPeer {
         let dht_handle = dht.get_handle();
 
         // Start listener task
-        tokio::task::spawn(async move {
+        let task_handle = tokio::task::spawn(async move {
             tokio::pin!(exit_rx);
 
             debug!("Start DHT task");
@@ -225,15 +227,18 @@ impl MockPeer {
             }
 
             debug!("Exit DHT task");
+            dht
         });
 
         Self {
             dht_handle,
+            task_handle,
             exit_tx,
         }
     }
 
-    pub fn exit(self) {
+    pub async fn exit(self) -> Dht<Id, (), u32, NetMuxHandle> {
         let _ = self.exit_tx.send(());
+        self.task_handle.await.unwrap()
     }
 }

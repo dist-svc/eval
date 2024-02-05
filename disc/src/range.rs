@@ -64,7 +64,7 @@ impl <'a> Iterator for IntRangeIter<'a> {
             },
             IntRange::Inc(start, end, step) => {
                 let v = start + step * self.index;
-                if v >= *end {
+                if v > *end {
                     return None;
                 }
                 self.index += 1;
@@ -88,7 +88,7 @@ mod test {
     #[test]
     fn range_from_str() {
         let r = IntRange::from_str("0:10:2").unwrap();
-        assert_eq!(r.iter().collect::<Vec<_>>(), (0..10).step_by(2).collect::<Vec<_>>());
+        assert_eq!(r.iter().collect::<Vec<_>>(), (0..11).step_by(2).collect::<Vec<_>>());
     }
 
     #[test]
@@ -103,9 +103,12 @@ mod test {
     #[test]
     fn iter_range() {
         let r = IntRange::Inc(0, 10, 1);
-        assert_eq!(r.iter().collect::<Vec<_>>(), (0..10).collect::<Vec<_>>());
+        assert_eq!(r.iter().collect::<Vec<_>>(), (0..11).collect::<Vec<_>>());
 
         let r = IntRange::Inc(0, 10, 2);
-        assert_eq!(r.iter().collect::<Vec<_>>(), (0..10).step_by(2).collect::<Vec<_>>());
+        assert_eq!(r.iter().collect::<Vec<_>>(), (0..11).step_by(2).collect::<Vec<_>>());
+
+        let r = IntRange::Inc(100, 200, 100);
+        assert_eq!(r.iter().collect::<Vec<_>>(), vec![100, 200]);
     }
 }
