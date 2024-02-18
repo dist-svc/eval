@@ -1,8 +1,9 @@
-# PhD Evaluation Metarepo
+# DSF Evaluation Metarepo
 
 
 ## Contents 
 
-- [spec](/spec) - Specifications for comparison with DSF-IoT
-
+- [spec](/spec) - DSF-IoT vs. existing specifications
+- [disc](/disc) - Discovery and DHT performance evaluation
+- [perf](/perf) - Broker performance evaluation
 
